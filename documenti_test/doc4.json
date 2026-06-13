@@ -1,0 +1,15 @@
+{
+  "nome": "Mario",
+  "cognome": "Rossi",
+  "eta": 30,
+  "isStudente": false,
+  "hobbies": [
+    "lettura", 
+    "videogiochi", 
+    "calcetto"
+  ],
+  "indirizzo": {
+    "citta": "Roma",
+    "cap": "00100"
+  }
+}
