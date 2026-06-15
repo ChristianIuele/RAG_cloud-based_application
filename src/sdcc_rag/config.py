@@ -52,3 +52,9 @@ class Settings(BaseSettings):
     # --- Ingestion -----------------------------------------------------------
     data_path: str = "./data"
     batch_size: int = 64
+
+    # --- Retrieval / query ---------------------------------------------------
+    retrieval_top_k: int = 5  # numero di chunk recuperati per domanda
+    # soglia di rilevanza (similarità coseno): 0.0 = nessun filtro finché non
+    # viene calibrata contro il corpus reale.
+    retrieval_min_score: float = 0.0

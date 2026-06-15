@@ -38,6 +38,28 @@ class EmbeddedChunk:
     embedding: list[float]
 
 
+@dataclass(frozen=True)
+class RetrievedChunk:
+    """Chunk recuperato dal vector store con il suo punteggio di rilevanza."""
+
+    chunk: Chunk
+    score: float  # similarità coseno: più alto = più pertinente alla query
+
+
+@dataclass(frozen=True)
+class Answer:
+    """Risposta generata dal sistema RAG, con le fonti a supporto.
+
+    `sources` è allineato 1:1 ai passaggi usati nel prompt (citazioni `[i]`);
+    `chunks` conserva l'evidenza effettivamente passata all'LLM.
+    """
+
+    question: str
+    text: str
+    sources: list[str] = field(default_factory=list)
+    chunks: list[Chunk] = field(default_factory=list)
+
+
 @dataclass
 class IngestionReport:
     """Riepilogo accumulato durante un'esecuzione di ingestion."""

@@ -9,7 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from sdcc_rag.domain.models import Chunk, Document, EmbeddedChunk
+from sdcc_rag.domain.models import Chunk, Document, EmbeddedChunk, RetrievedChunk
 
 
 class IDocumentLoader(ABC):
@@ -58,8 +58,8 @@ class IVectorStore(ABC):
         """Inserisce/aggiorna i chunk usando chunk_id come chiave (idempotente)."""
 
     @abstractmethod
-    def query(self, embedding: list[float], top_k: int = 5) -> list[Chunk]:
-        """Restituisce i chunk più simili al vettore di query."""
+    def query(self, embedding: list[float], top_k: int = 5) -> list[RetrievedChunk]:
+        """Restituisce i chunk più simili al vettore di query, con score di rilevanza."""
 
     @abstractmethod
     def count(self) -> int:
@@ -70,11 +70,15 @@ class ILLMProvider(ABC):
     """Modello di linguaggio per l'arricchimento semantico (summary, keywords)."""
 
     @abstractmethod
-    def complete(self, prompt: str, *, json_output: bool = False) -> str:
+    def complete(
+        self, prompt: str, *, system: str | None = None, json_output: bool = False
+    ) -> str:
         """Esegue il prompt e restituisce il testo generato.
 
-        Se `json_output` è True il provider chiede al modello una risposta in
-        formato JSON (il parsing resta a carico del chiamante).
+        `system`, se fornito, è il system message che definisce ruolo e regole del
+        modello (separa la *policy* dai *dati* nel prompt utente). Se `json_output`
+        è True il provider chiede al modello una risposta in formato JSON (il
+        parsing resta a carico del chiamante).
         """
 
 

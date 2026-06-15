@@ -1,0 +1,4 @@
+[
+  {"id": 1, "text": "La virtualizzazione permette di eseguire più sistemi operativi su un singolo hardware fisico tramite un Hypervisor."},
+  {"id": 2, "text": "Un container Docker pacchetta un'applicazione e le sue dipendenze isolandola a livello di sistema operativo, risultando più leggero di una VM."}
+]

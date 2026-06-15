@@ -24,10 +24,17 @@ class OllamaLLMProvider(ILLMProvider):
         self._client = Client(host=settings.ollama_host)
         self._model = settings.ollama_llm_model
 
-    def complete(self, prompt: str, *, json_output: bool = False) -> str:
+    def complete(
+        self, prompt: str, *, system: str | None = None, json_output: bool = False
+    ) -> str:
+        # Il system message (policy/ruolo) precede il messaggio utente (dati):
+        # separarli rende il modello più aderente alle regole e resistente al
+        # prompt-injection contenuto nei dati.
+        messages = [{"role": "system", "content": system}] if system else []
+        messages.append({"role": "user", "content": prompt})
         response = self._client.chat(
             model=self._model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
             # `format="json"` vincola il modello a produrre JSON valido.
             format="json" if json_output else "",
             # temperatura 0 → output il più stabile/riproducibile possibile.

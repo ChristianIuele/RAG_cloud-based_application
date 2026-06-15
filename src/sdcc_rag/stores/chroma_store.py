@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from sdcc_rag.config import Settings
 from sdcc_rag.domain.interfaces import IVectorStore
-from sdcc_rag.domain.models import Chunk, EmbeddedChunk
+from sdcc_rag.domain.models import Chunk, EmbeddedChunk, RetrievedChunk
 
 
 class ChromaVectorStore(IVectorStore):
@@ -32,24 +32,25 @@ class ChromaVectorStore(IVectorStore):
             metadatas=[self._metadata(ec.chunk) for ec in embedded_chunks],
         )
 
-    def query(self, embedding: list[float], top_k: int = 5) -> list[Chunk]:
+    def query(self, embedding: list[float], top_k: int = 5) -> list[RetrievedChunk]:
         result = self._collection.query(
             query_embeddings=[embedding],
             n_results=top_k,
-            include=["documents", "metadatas"],
+            include=["documents", "metadatas", "distances"],
         )
         ids = result.get("ids", [[]])[0]
         documents = result.get("documents", [[]])[0]
         metadatas = result.get("metadatas", [[]])[0]
+        distances = result.get("distances", [[]])[0]
 
-        chunks: list[Chunk] = []
-        for chunk_id, text, metadata in zip(ids, documents, metadatas):
+        retrieved: list[RetrievedChunk] = []
+        for chunk_id, text, metadata, distance in zip(ids, documents, metadatas, distances):
             metadata = dict(metadata or {})
             source = str(metadata.pop("source", ""))
-            chunks.append(
-                Chunk(text=text, chunk_id=chunk_id, source=source, metadata=metadata)
-            )
-        return chunks
+            chunk = Chunk(text=text, chunk_id=chunk_id, source=source, metadata=metadata)
+            # spazio "cosine": distance = 1 − similarità ⇒ score = 1 − distance.
+            retrieved.append(RetrievedChunk(chunk=chunk, score=1.0 - float(distance)))
+        return retrieved
 
     def count(self) -> int:
         return self._collection.count()
