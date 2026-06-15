@@ -11,7 +11,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from sdcc_rag.domain.interfaces import IEmbeddingProvider, IVectorStore  # noqa: E402
+import json  # noqa: E402
+
+from sdcc_rag.domain.interfaces import (  # noqa: E402
+    IEmbeddingProvider,
+    ILLMProvider,
+    IVectorStore,
+)
 from sdcc_rag.domain.models import Chunk, EmbeddedChunk  # noqa: E402
 
 
@@ -49,3 +55,20 @@ class FakeVectorStore(IVectorStore):
 
     def count(self) -> int:
         return len(self.items)
+
+
+class FakeLLMProvider(ILLMProvider):
+    """LLM finto: ritorna un JSON canned con summary e keywords."""
+
+    def __init__(self, summary: str = "riassunto", keywords: list[str] | None = None) -> None:
+        self._payload = {"summary": summary, "keywords": keywords or ["alpha", "beta"]}
+
+    def complete(self, prompt: str, *, json_output: bool = False) -> str:
+        return json.dumps(self._payload)
+
+
+class BrokenLLMProvider(ILLMProvider):
+    """LLM che fallisce sempre: per testare il degrado controllato dell'enricher."""
+
+    def complete(self, prompt: str, *, json_output: bool = False) -> str:
+        raise RuntimeError("LLM non raggiungibile")

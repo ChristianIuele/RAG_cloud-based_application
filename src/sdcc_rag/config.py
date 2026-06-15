@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     ollama_host: str = "http://localhost:11434"
     ollama_embedding_model: str = "nomic-embed-text"
 
+    # --- LLM (arricchimento semantico) ---------------------------------------
+    llm_provider: str = "ollama"  # oggi: "ollama"
+    ollama_llm_model: str = "llama3"
+    semantic_max_chars: int = 4000  # testo max passato all'LLM per summary/keywords
+
     # --- Chunking ------------------------------------------------------------
     chunk_size: int = 1000
     chunk_overlap: int = 200

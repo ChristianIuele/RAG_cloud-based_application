@@ -15,6 +15,7 @@ from sdcc_rag.domain.interfaces import (
     IDocumentLoader,
     IDocumentSplitter,
     IEmbeddingProvider,
+    IMetadataEnricher,
     IVectorStore,
 )
 from sdcc_rag.domain.models import EmbeddedChunk, IngestionReport
@@ -35,12 +36,14 @@ class IngestionOrchestrator:
         splitter: IDocumentSplitter,
         embedder: IEmbeddingProvider,
         store: IVectorStore,
+        enricher: IMetadataEnricher,
         batch_size: int = 64,
     ) -> None:
         self._registry = LoaderRegistry(loaders)
         self._splitter = splitter
         self._embedder = embedder
         self._store = store
+        self._enricher = enricher
         self._batch_size = batch_size
 
     def ingest_path(self, root: Path) -> IngestionReport:
@@ -59,17 +62,26 @@ class IngestionOrchestrator:
                 continue
 
             for document in documents:
-                chunks = self._splitter.split(document)
-                for batch in _batched(chunks, self._batch_size):
-                    texts = [chunk.text for chunk in batch]
-                    vectors = self._embedder.embed_documents(texts)
-                    embedded = [
-                        EmbeddedChunk(chunk=chunk, embedding=vector)
-                        for chunk, vector in zip(batch, vectors)
-                    ]
-                    self._store.upsert(embedded)
-                    report.chunks_indexed += len(embedded)
-                report.documents_loaded += 1
+                try:
+                    # arricchimento doc-level (tracciabilità + semantico + manuale);
+                    # i campi scendono nei chunk via splitter
+                    document = self._enricher.enrich_document(document)
+                    chunks = self._splitter.split(document)
+                    # arricchimento chunk-level (es. conteggi): non altera chunk_id
+                    chunks = [self._enricher.enrich_chunk(chunk) for chunk in chunks]
+                    for batch in _batched(chunks, self._batch_size):
+                        texts = [chunk.text for chunk in batch]
+                        vectors = self._embedder.embed_documents(texts)
+                        embedded = [
+                            EmbeddedChunk(chunk=chunk, embedding=vector)
+                            for chunk, vector in zip(batch, vectors)
+                        ]
+                        self._store.upsert(embedded)
+                        report.chunks_indexed += len(embedded)
+                    report.documents_loaded += 1
+                except Exception as exc:  # un documento problematico non ferma la pipeline
+                    report.errors.append(f"{document.source}: {exc}")
+                    continue
 
         return report
 

@@ -29,6 +29,8 @@ interface in `src/sdcc_rag/domain/interfaces.py`, with interchangeable concrete 
 - `IDocumentSplitter` → `RecursiveCharacterSplitter` (self-contained, no LangChain)
 - `IEmbeddingProvider` → `OpenAIEmbeddingProvider` / `AzureOpenAIEmbeddingProvider` / `OllamaEmbeddingProvider` (local, free)
 - `IVectorStore` → `ChromaVectorStore`
+- `IMetadataEnricher` → `CompositeMetadataEnricher` of `StandardMetadataEnricher` (traceability + counts) / `SemanticMetadataEnricher` (LLM summary+keywords) / `ManualMetadataEnricher` (user title/author)
+- `ILLMProvider` → `OllamaLLMProvider` (local, free) — selected via `llm/factory.py:create_llm_provider`
 
 Data flows as immutable dataclasses (`domain/models.py`): `Document` → `Chunk` → `EmbeddedChunk`.
 
@@ -41,7 +43,8 @@ dependencies pre-built (pure DI, no concrete imports inside). `scripts/ingest.py
 - **Embedding provider switch is config-only**: `EMBEDDING_PROVIDER` env var (`openai`|`azure`) drives `embeddings/factory.py:create_embedding_provider`. Never hardcode a provider outside the factory. Both providers use the `openai` SDK (`OpenAI` vs `AzureOpenAI` client); on Azure the API "model" is the deployment name.
 - **Embeddings are computed by the provider, not Chroma**: vectors are passed explicitly to `ChromaVectorStore`; do not enable Chroma's internal embedding_function.
 - **Idempotent ingestion**: `domain/models.py:make_chunk_id` derives a deterministic SHA-256 id from `(source, index, text)`; the store uses `upsert` keyed on it, so re-ingesting updates instead of duplicating. Preserve this when changing chunking or storage.
-- **One file must not stop the pipeline**: loader errors are caught and recorded in `IngestionReport.errors`; unsupported extensions go to `files_skipped`.
+- **One file must not stop the pipeline**: loader errors and per-document errors are caught and recorded in `IngestionReport.errors`; unsupported extensions go to `files_skipped`.
+- **Metadata enrichment is metadata-only**: enrichers return new dataclass copies (`dataclasses.replace`) and touch only `metadata`, never `text`/`source`/`chunk_index` — so `chunk_id` and idempotency hold even with volatile/non-deterministic values (timestamp, LLM output). Enriched values must be **scalar** (`str`/`int`/`float`/`bool`) to survive `ChromaVectorStore._metadata`; lists like `keywords` are joined into a string. Doc-level enrichment fans out to chunks via the splitter. `SemanticMetadataEnricher` degrades gracefully (LLM/JSON error → document unchanged).
 - New concrete impls must subclass the matching ABC and be injected at the composition root — keep the orchestrator free of concrete imports.
 
 ## Config

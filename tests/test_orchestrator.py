@@ -5,8 +5,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from conftest import FakeEmbeddingProvider, FakeVectorStore
+from conftest import FakeEmbeddingProvider, FakeLLMProvider, FakeVectorStore
 
+from sdcc_rag.enrichment.composite_enricher import CompositeMetadataEnricher
+from sdcc_rag.enrichment.manual_enricher import ManualMetadataEnricher
+from sdcc_rag.enrichment.semantic_enricher import SemanticMetadataEnricher
+from sdcc_rag.enrichment.standard_enricher import StandardMetadataEnricher
 from sdcc_rag.ingestion.orchestrator import IngestionOrchestrator
 from sdcc_rag.loaders.json_loader import JsonLoader
 from sdcc_rag.loaders.text_loader import TextLoader
@@ -14,11 +18,19 @@ from sdcc_rag.splitters.recursive_splitter import RecursiveCharacterSplitter
 
 
 def _build(store: FakeVectorStore, embedder: FakeEmbeddingProvider) -> IngestionOrchestrator:
+    enricher = CompositeMetadataEnricher(
+        [
+            StandardMetadataEnricher(),
+            SemanticMetadataEnricher(FakeLLMProvider()),
+            ManualMetadataEnricher({"title": "Manuale SDCC", "author": "ACME"}),
+        ]
+    )
     return IngestionOrchestrator(
         loaders=[TextLoader(), JsonLoader(text_field="text")],
         splitter=RecursiveCharacterSplitter(chunk_size=40, chunk_overlap=5),
         embedder=embedder,
         store=store,
+        enricher=enricher,
         batch_size=8,
     )
 
@@ -36,6 +48,22 @@ def test_ingest_conta_documenti_e_chunk(tmp_path: Path):
     assert report.documents_loaded == 3  # 1 txt + 2 record json
     assert report.chunks_indexed > 0
     assert store.count() == report.chunks_indexed
+
+
+def test_metadati_arricchiti_arrivano_nei_chunk(tmp_path: Path):
+    (tmp_path / "a.txt").write_text("alpha beta gamma delta " * 10, encoding="utf-8")
+
+    store, embedder = FakeVectorStore(), FakeEmbeddingProvider()
+    _build(store, embedder).ingest_path(tmp_path)
+
+    meta = next(iter(store.items.values())).chunk.metadata
+    # doc-level (tracciabilità + semantico + manuale) sceso nei chunk via splitter
+    assert {"content_sha256", "ingested_at", "source_stem", "summary", "keywords",
+            "title", "author"} <= meta.keys()
+    # chunk-level
+    assert "char_count" in meta and "word_count" in meta
+    # tutti i valori sono scalari (sopravvivono al filtro di ChromaVectorStore)
+    assert all(isinstance(v, (str, int, float, bool)) for v in meta.values())
 
 
 def test_file_non_supportato_viene_saltato(tmp_path: Path):

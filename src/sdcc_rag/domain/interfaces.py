@@ -64,3 +64,31 @@ class IVectorStore(ABC):
     @abstractmethod
     def count(self) -> int:
         """Numero di chunk attualmente indicizzati."""
+
+
+class ILLMProvider(ABC):
+    """Modello di linguaggio per l'arricchimento semantico (summary, keywords)."""
+
+    @abstractmethod
+    def complete(self, prompt: str, *, json_output: bool = False) -> str:
+        """Esegue il prompt e restituisce il testo generato.
+
+        Se `json_output` è True il provider chiede al modello una risposta in
+        formato JSON (il parsing resta a carico del chiamante).
+        """
+
+
+class IMetadataEnricher(ABC):
+    """Arricchisce i metadati di Document/Chunk durante l'ingestion.
+
+    Tocca esclusivamente il campo `metadata`: non altera mai testo/source/indice,
+    così l'id deterministico dei chunk (e quindi l'idempotenza) resta invariato.
+    """
+
+    @abstractmethod
+    def enrich_document(self, document: Document) -> Document:
+        """Restituisce una nuova copia del documento con metadata arricchiti."""
+
+    @abstractmethod
+    def enrich_chunk(self, chunk: Chunk) -> Chunk:
+        """Restituisce una nuova copia del chunk con metadata arricchiti."""
