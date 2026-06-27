@@ -16,6 +16,11 @@ def create_llm_provider(settings: Settings) -> ILLMProvider:
         from sdcc_rag.llm.ollama_provider import OllamaLLMProvider
 
         return OllamaLLMProvider(settings)
+    if provider == "azure":
+        from sdcc_rag.llm.azure_provider import AzureOpenAILLMProvider
+
+        return AzureOpenAILLMProvider(settings)
     raise ValueError(
-        f"llm_provider sconosciuto: {settings.llm_provider!r} (valori ammessi: 'ollama')"
+        f"llm_provider sconosciuto: {settings.llm_provider!r} "
+        "(valori ammessi: 'ollama', 'azure')"
     )

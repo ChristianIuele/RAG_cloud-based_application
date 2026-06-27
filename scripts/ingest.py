@@ -93,11 +93,49 @@ def main() -> None:
         batch_size=settings.batch_size,
     )
 
-    root = Path(args.path) if args.path else Path(settings.data_path)
-    report = orchestrator.ingest_path(root)
+    source = settings.document_source.lower()
+    if source == "azure":
+        documents = _load_azure_documents(settings, loaders)
+        report = orchestrator.ingest_documents(documents)
+    elif source == "local":
+        root = Path(args.path) if args.path else Path(settings.data_path)
+        report = orchestrator.ingest_path(root)
+    else:
+        raise SystemExit(
+            f"DOCUMENT_SOURCE sconosciuto: {settings.document_source!r} "
+            "(valori ammessi: 'local', 'azure')"
+        )
 
     print(report)
     print(f"  chunk totali nello store: {store.count()}")
+
+
+def _load_azure_documents(settings: Settings, loaders: list) -> list:
+    """Scarica e parsa tutti i blob del container configurato.
+
+    Import lazy di Azure: il flusso locale non richiede la libreria. La fase di
+    split/enrich/embed/upsert resta condivisa con l'ingestion locale tramite
+    `IngestionOrchestrator.ingest_documents`.
+    """
+    from azure.storage.blob import BlobServiceClient
+
+    from sdcc_rag.loaders.azure_blob_loader import AzureBlobDocumentLoader
+    from sdcc_rag.loaders.registry import LoaderRegistry
+
+    # Valida le credenziali Azure (ValueError se mancanti) e riusa i loader locali.
+    azure_loader = AzureBlobDocumentLoader(settings, LoaderRegistry(loaders))
+    service = BlobServiceClient.from_connection_string(
+        settings.azure_storage_connection_string
+    )
+    container = service.get_container_client(settings.azure_storage_container_name)
+
+    documents = []
+    for blob in container.list_blobs():
+        try:
+            documents.extend(azure_loader.load(Path(blob.name)))
+        except Exception as exc:  # un blob rotto non deve fermare la pipeline
+            print(f"  blob saltato {blob.name}: {exc}")
+    return documents
 
 
 if __name__ == "__main__":

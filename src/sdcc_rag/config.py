@@ -29,13 +29,18 @@ class Settings(BaseSettings):
     azure_openai_deployment: str | None = None  # nome del deployment dell'embedding
     azure_openai_api_version: str = "2024-02-01"
 
+    # --- Azure Blob Storage (sorgente documenti) -----------------------------
+    azure_storage_connection_string: str = ""
+    azure_storage_container_name: str = ""
+
     # --- Ollama (locale, gratuito) -------------------------------------------
     ollama_host: str = "http://localhost:11434"
     ollama_embedding_model: str = "nomic-embed-text"
 
     # --- LLM (arricchimento semantico) ---------------------------------------
-    llm_provider: str = "ollama"  # oggi: "ollama"
+    llm_provider: str = "ollama"  # "ollama" | "azure"
     ollama_llm_model: str = "llama3"
+    azure_llm_deployment: str = "gpt-4o-mini"  # nome del deployment del modello chat su Azure
     semantic_max_chars: int = 4000  # testo max passato all'LLM per summary/keywords
 
     # --- Chunking ------------------------------------------------------------
@@ -50,6 +55,7 @@ class Settings(BaseSettings):
     json_text_field: str = "text"  # campo da cui estrarre il testo nei record JSON
 
     # --- Ingestion -----------------------------------------------------------
+    document_source: str = "local"  # "local" | "azure"
     data_path: str = "./data"
     batch_size: int = 64
 

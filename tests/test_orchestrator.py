@@ -11,6 +11,7 @@ from sdcc_rag.enrichment.composite_enricher import CompositeMetadataEnricher
 from sdcc_rag.enrichment.manual_enricher import ManualMetadataEnricher
 from sdcc_rag.enrichment.semantic_enricher import SemanticMetadataEnricher
 from sdcc_rag.enrichment.standard_enricher import StandardMetadataEnricher
+from sdcc_rag.domain.models import Document
 from sdcc_rag.ingestion.orchestrator import IngestionOrchestrator
 from sdcc_rag.loaders.json_loader import JsonLoader
 from sdcc_rag.loaders.text_loader import TextLoader
@@ -89,6 +90,27 @@ def test_ingestion_idempotente(tmp_path: Path):
 
     assert store.count() == count_after_first  # nessun duplicato
     assert first.chunks_indexed == count_after_first
+
+
+def test_ingest_documents_riusa_la_pipeline():
+    # Flusso "Azure": documenti già caricati in memoria, nessun filesystem.
+    documents = [
+        Document(content="alpha beta gamma delta " * 10, source="blob://a.txt",
+                 metadata={"filename": "a.txt"}),
+        Document(content="record singolo", source="blob://b.json#0",
+                 metadata={"filename": "b.json"}),
+    ]
+
+    store, embedder = FakeVectorStore(), FakeEmbeddingProvider()
+    report = _build(store, embedder).ingest_documents(documents)
+
+    assert report.documents_loaded == 2
+    assert report.chunks_indexed > 0
+    assert store.count() == report.chunks_indexed
+
+    # stesso arricchimento del flusso locale (doc-level + chunk-level) nei chunk
+    meta = next(iter(store.items.values())).chunk.metadata
+    assert {"summary", "keywords", "title", "author", "char_count", "word_count"} <= meta.keys()
 
 
 def test_json_corrotto_registra_errore_senza_fermarsi(tmp_path: Path):

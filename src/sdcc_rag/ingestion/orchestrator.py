@@ -7,7 +7,7 @@ spezza i documenti, vettorizza a batch e persiste, accumulando un report.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import TypeVar
 
@@ -18,7 +18,7 @@ from sdcc_rag.domain.interfaces import (
     IMetadataEnricher,
     IVectorStore,
 )
-from sdcc_rag.domain.models import EmbeddedChunk, IngestionReport
+from sdcc_rag.domain.models import Document, EmbeddedChunk, IngestionReport
 from sdcc_rag.loaders.registry import LoaderRegistry
 
 T = TypeVar("T")
@@ -61,29 +61,45 @@ class IngestionOrchestrator:
                 report.errors.append(f"{file}: {exc}")
                 continue
 
-            for document in documents:
-                try:
-                    # arricchimento doc-level (tracciabilità + semantico + manuale);
-                    # i campi scendono nei chunk via splitter
-                    document = self._enricher.enrich_document(document)
-                    chunks = self._splitter.split(document)
-                    # arricchimento chunk-level (es. conteggi): non altera chunk_id
-                    chunks = [self._enricher.enrich_chunk(chunk) for chunk in chunks]
-                    for batch in _batched(chunks, self._batch_size):
-                        texts = [chunk.text for chunk in batch]
-                        vectors = self._embedder.embed_documents(texts)
-                        embedded = [
-                            EmbeddedChunk(chunk=chunk, embedding=vector)
-                            for chunk, vector in zip(batch, vectors)
-                        ]
-                        self._store.upsert(embedded)
-                        report.chunks_indexed += len(embedded)
-                    report.documents_loaded += 1
-                except Exception as exc:  # un documento problematico non ferma la pipeline
-                    report.errors.append(f"{document.source}: {exc}")
-                    continue
+            self._process_documents(documents, report)
 
         return report
+
+    def ingest_documents(self, documents: Iterable[Document]) -> IngestionReport:
+        """Processa documenti già caricati (es. scaricati da Azure Blob Storage).
+
+        Punto d'ingresso alternativo a `ingest_path`: condivide lo stesso ciclo di
+        split/enrich/embed/upsert, così la sorgente (filesystem o cloud) non cambia
+        di una riga la logica di indicizzazione.
+        """
+        report = IngestionReport()
+        self._process_documents(documents, report)
+        return report
+
+    def _process_documents(
+        self, documents: Iterable[Document], report: IngestionReport
+    ) -> None:
+        for document in documents:
+            try:
+                # arricchimento doc-level (tracciabilità + semantico + manuale);
+                # i campi scendono nei chunk via splitter
+                document = self._enricher.enrich_document(document)
+                chunks = self._splitter.split(document)
+                # arricchimento chunk-level (es. conteggi): non altera chunk_id
+                chunks = [self._enricher.enrich_chunk(chunk) for chunk in chunks]
+                for batch in _batched(chunks, self._batch_size):
+                    texts = [chunk.text for chunk in batch]
+                    vectors = self._embedder.embed_documents(texts)
+                    embedded = [
+                        EmbeddedChunk(chunk=chunk, embedding=vector)
+                        for chunk, vector in zip(batch, vectors)
+                    ]
+                    self._store.upsert(embedded)
+                    report.chunks_indexed += len(embedded)
+                report.documents_loaded += 1
+            except Exception as exc:  # un documento problematico non ferma la pipeline
+                report.errors.append(f"{document.source}: {exc}")
+                continue
 
     @staticmethod
     def _discover_files(root: Path) -> list[Path]:
