@@ -47,9 +47,17 @@ class Settings(BaseSettings):
     chunk_size: int = 1000
     chunk_overlap: int = 200
 
+    # --- Selezione vector store ----------------------------------------------
+    vector_store: str = "chroma"  # "chroma" | "azure_search"
+
     # --- ChromaDB ------------------------------------------------------------
     chroma_path: str = "./chroma_db"
     chroma_collection: str = "sdcc"
+
+    # --- Azure AI Search (vector store cloud) --------------------------------
+    azure_search_endpoint: str | None = None
+    azure_search_admin_key: str | None = None
+    azure_search_index_name: str = "rag-documents"
 
     # --- Loader JSON ---------------------------------------------------------
     json_text_field: str = "text"  # campo da cui estrarre il testo nei record JSON

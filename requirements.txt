@@ -1,6 +1,7 @@
 chromadb>=0.5
 openai>=1.30
 azure-storage-blob>=12
+azure-search-documents>=11.4
 ollama>=0.3
 pydantic-settings>=2.2
 pytest>=8.0

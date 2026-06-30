@@ -24,7 +24,7 @@ from sdcc_rag.config import Settings  # noqa: E402
 from sdcc_rag.embeddings.factory import create_embedding_provider  # noqa: E402
 from sdcc_rag.llm.factory import create_llm_provider  # noqa: E402
 from sdcc_rag.retrieval.rag_service import RAGService  # noqa: E402
-from sdcc_rag.stores.chroma_store import ChromaVectorStore  # noqa: E402
+from sdcc_rag.stores.factory import create_vector_store  # noqa: E402
 
 
 def _parse_args() -> argparse.Namespace:
@@ -41,7 +41,7 @@ def main() -> None:
     settings = Settings()
 
     embedder = create_embedding_provider(settings)  # STESSO provider dell'ingestion
-    store = ChromaVectorStore(settings)
+    store = create_vector_store(settings)
     llm = create_llm_provider(settings)
 
     service = RAGService(

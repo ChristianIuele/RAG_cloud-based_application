@@ -31,7 +31,7 @@ from sdcc_rag.llm.factory import create_llm_provider  # noqa: E402
 from sdcc_rag.loaders.json_loader import JsonLoader  # noqa: E402
 from sdcc_rag.loaders.text_loader import TextLoader  # noqa: E402
 from sdcc_rag.splitters.recursive_splitter import RecursiveCharacterSplitter  # noqa: E402
-from sdcc_rag.stores.chroma_store import ChromaVectorStore  # noqa: E402
+from sdcc_rag.stores.factory import create_vector_store  # noqa: E402
 
 
 def _parse_args() -> argparse.Namespace:
@@ -72,7 +72,7 @@ def main() -> None:
         chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
     )
     embedder = create_embedding_provider(settings)
-    store = ChromaVectorStore(settings)
+    store = create_vector_store(settings)
 
     # Catena di arricchimento: tracciabilità → semantico (LLM) → manuale (utente).
     llm = create_llm_provider(settings)
