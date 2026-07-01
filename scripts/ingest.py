@@ -139,4 +139,5 @@ def _load_azure_documents(settings: Settings, loaders: list) -> list:
 
 
 if __name__ == "__main__":
+    print("Starting SDCC RAG Ingestion Pipeline...", flush=True)
     main()

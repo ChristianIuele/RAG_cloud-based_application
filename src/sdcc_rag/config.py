@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     azure_search_endpoint: str | None = None
     azure_search_admin_key: str | None = None
     azure_search_index_name: str = "rag-documents"
+    # Soglia di rilevanza (coseno) applicata dall'adapter Azure: scarta i match
+    # spuri a basso @search.score. Scala diversa da Chroma, perciò setting
+    # separato dal globale `retrieval_min_score` (0.0 = nessun filtro).
+    azure_search_min_score: float = 0.70
 
     # --- Loader JSON ---------------------------------------------------------
     json_text_field: str = "text"  # campo da cui estrarre il testo nei record JSON

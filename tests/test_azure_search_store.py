@@ -43,11 +43,16 @@ def _settings(**overrides) -> Settings:
     return Settings(**base)
 
 
-def _store_with_fake() -> tuple[AzureSearchVectorStore, FakeSearchClient]:
-    """Costruisce lo store evitando l'__init__ reale (che istanzia l'SDK Azure)."""
+def _store_with_fake(min_score: float = 0.0) -> tuple[AzureSearchVectorStore, FakeSearchClient]:
+    """Costruisce lo store evitando l'__init__ reale (che istanzia l'SDK Azure).
+
+    `min_score` replica `settings.azure_search_min_score`: default 0.0 (nessun
+    filtro) così i test non-soglia restano invariati.
+    """
     store = AzureSearchVectorStore.__new__(AzureSearchVectorStore)
     fake = FakeSearchClient()
     store._client = fake
+    store._min_score = min_score
     return store, fake
 
 
@@ -121,6 +126,34 @@ def test_query_deserializza_risultati():
     vq = fake.last_search_kwargs["vector_queries"][0]
     assert vq.fields == "content_vector"
     assert vq.k_nearest_neighbors == 5
+
+
+def test_query_filtra_chunk_sotto_soglia():
+    # Mock di Azure con un match forte (0.85) e uno spurio (0.40).
+    store, fake = _store_with_fake(min_score=0.70)
+    fake.search_results = [
+        {"id": "alto", "content": "pertinente", "@search.score": 0.85},
+        {"id": "basso", "content": "spurio", "@search.score": 0.40},
+    ]
+
+    retrieved = store.query([0.1, 0.2, 0.3], top_k=5)
+
+    # Solo il chunk sopra soglia sopravvive; quello a 0.40 è scartato dall'adapter.
+    assert [rc.chunk.chunk_id for rc in retrieved] == ["alto"]
+    assert retrieved[0].score == pytest.approx(0.85)
+
+
+def test_query_senza_soglia_non_filtra():
+    # Con min_score=0.0 (default globale) nessun match viene rimosso.
+    store, fake = _store_with_fake(min_score=0.0)
+    fake.search_results = [
+        {"id": "alto", "content": "x", "@search.score": 0.85},
+        {"id": "basso", "content": "y", "@search.score": 0.40},
+    ]
+
+    retrieved = store.query([0.1, 0.2, 0.3], top_k=5)
+
+    assert [rc.chunk.chunk_id for rc in retrieved] == ["alto", "basso"]
 
 
 def test_query_metadata_assente():

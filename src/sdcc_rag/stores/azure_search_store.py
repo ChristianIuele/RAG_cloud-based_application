@@ -17,8 +17,11 @@ lo mette tra i metadata scalari) e ri-estratto in `query`. A differenza di Chrom
 `metadata` è una stringa JSON: può quindi conservare anche valori non scalari (es. liste).
 
 Nota sullo score: `@search.score` di Azure (metrica cosine) è su scala diversa dal
-`1 - distance` di Chroma. La soglia `retrieval_min_score` va perciò **ricalibrata**
-quando si passa a questo store (default 0.0 = nessun filtro).
+`1 - distance` di Chroma. Per questo l'adapter applica un **taglio di rilevanza**
+proprio, `settings.azure_search_min_score` (default 0.70), tarato sulla scala coseno
+di Azure: i match sotto soglia sono spuri e vengono rimossi in `query()` prima che il
+contesto raggiunga il modello generativo. La soglia è separata dal globale
+`retrieval_min_score` (usato da Chroma) proprio perché le scale non sono confrontabili.
 """
 
 from __future__ import annotations
@@ -61,6 +64,8 @@ class AzureSearchVectorStore(IVectorStore):
             index_name=settings.azure_search_index_name,
             credential=AzureKeyCredential(settings.azure_search_admin_key),
         )
+        # Soglia coseno per scartare i match spuri (vedi docstring di modulo).
+        self._min_score = settings.azure_search_min_score
 
     def upsert(self, embedded_chunks: list[EmbeddedChunk]) -> None:
         if not embedded_chunks:
@@ -84,7 +89,10 @@ class AzureSearchVectorStore(IVectorStore):
             top=top_k,
             select=["id", "content", "metadata"],
         )
-        return [self._to_retrieved(result) for result in results]
+        retrieved = [self._to_retrieved(result) for result in results]
+        # Taglio di rilevanza: i match sotto la soglia coseno sono spuri e non
+        # devono entrare nel contesto passato al modello generativo.
+        return [rc for rc in retrieved if rc.score >= self._min_score]
 
     def count(self) -> int:
         return self._client.get_document_count()
