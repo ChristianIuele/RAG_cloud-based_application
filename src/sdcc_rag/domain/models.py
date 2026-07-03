@@ -31,6 +31,22 @@ class Chunk:
 
 
 @dataclass(frozen=True)
+class AutomaticMetadata:
+    """Metadati estratti automaticamente da un LLM sul testo del documento.
+
+    Struttura tipizzata restituita da `IMetadataExtractor`. Vive solo al confine
+    dell'extractor: l'adapter (`ExtractorMetadataEnricher`) la appiattisce nel
+    `dict` scalare che la pipeline sa già persistere (liste → stringa join-virgola).
+    """
+
+    summary: str = ""
+    keywords: list[str] = field(default_factory=list)
+    suggested_categories: list[str] = field(default_factory=list)
+    language: str = ""
+    entities: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class EmbeddedChunk:
     """Chunk con il relativo vettore di embedding."""
 

@@ -32,7 +32,11 @@ class ChromaVectorStore(IVectorStore):
             metadatas=[self._metadata(ec.chunk) for ec in embedded_chunks],
         )
 
-    def query(self, embedding: list[float], top_k: int = 5) -> list[RetrievedChunk]:
+    def query(
+        self, embedding: list[float], top_k: int = 5, query_text: str | None = None
+    ) -> list[RetrievedChunk]:
+        # Chroma è puramente vettoriale in questa configurazione: `query_text` fa
+        # parte della porta (per l'hybrid di Azure) ma qui viene ignorato.
         result = self._collection.query(
             query_embeddings=[embedding],
             n_results=top_k,

@@ -1,16 +1,16 @@
-"""Test degli enricher: tracciabilità, semantico (con fake LLM), manuale, composite."""
+"""Test degli enricher: tracciabilità, automatico (extractor), manuale, composite."""
 
 from __future__ import annotations
 
 import hashlib
 from datetime import datetime
 
-from conftest import BrokenLLMProvider, FakeLLMProvider
+from conftest import FakeMetadataExtractor
 
 from sdcc_rag.domain.models import Chunk, Document, make_chunk_id
 from sdcc_rag.enrichment.composite_enricher import CompositeMetadataEnricher
+from sdcc_rag.enrichment.extractor_enricher import ExtractorMetadataEnricher
 from sdcc_rag.enrichment.manual_enricher import ManualMetadataEnricher
-from sdcc_rag.enrichment.semantic_enricher import SemanticMetadataEnricher
 from sdcc_rag.enrichment.standard_enricher import StandardMetadataEnricher
 
 
@@ -57,30 +57,6 @@ def test_standard_immutabilita():
     assert "content_sha256" not in doc.metadata  # l'originale non viene mutato
 
 
-# --- Semantic ---------------------------------------------------------------
-
-def test_semantic_aggiunge_summary_e_keywords_stringa():
-    enricher = SemanticMetadataEnricher(FakeLLMProvider(summary="S", keywords=["a", "b", "c"]))
-    out = enricher.enrich_document(_doc())
-
-    assert out.metadata["summary"] == "S"
-    assert out.metadata["keywords"] == "a, b, c"  # lista serializzata a stringa scalare
-
-
-def test_semantic_degrada_su_errore_llm():
-    out = SemanticMetadataEnricher(BrokenLLMProvider()).enrich_document(_doc())
-    assert "summary" not in out.metadata  # nessuna eccezione, documento invariato
-
-
-def test_semantic_degrada_su_json_invalido():
-    class BadJson(FakeLLMProvider):
-        def complete(self, prompt, *, json_output=False):
-            return "non un json"
-
-    out = SemanticMetadataEnricher(BadJson()).enrich_document(_doc())
-    assert "summary" not in out.metadata
-
-
 # --- Manual -----------------------------------------------------------------
 
 def test_manual_inietta_campi():
@@ -100,7 +76,7 @@ def test_composite_applica_tutti_in_ordine():
     enricher = CompositeMetadataEnricher(
         [
             StandardMetadataEnricher(),
-            SemanticMetadataEnricher(FakeLLMProvider()),
+            ExtractorMetadataEnricher(FakeMetadataExtractor()),
             ManualMetadataEnricher({"title": "Manuale SDCC"}),
         ]
     )

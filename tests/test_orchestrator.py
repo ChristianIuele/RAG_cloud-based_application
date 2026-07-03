@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from conftest import FakeEmbeddingProvider, FakeLLMProvider, FakeVectorStore
+from conftest import FakeEmbeddingProvider, FakeMetadataExtractor, FakeVectorStore
 
 from sdcc_rag.enrichment.composite_enricher import CompositeMetadataEnricher
+from sdcc_rag.enrichment.extractor_enricher import ExtractorMetadataEnricher
 from sdcc_rag.enrichment.manual_enricher import ManualMetadataEnricher
-from sdcc_rag.enrichment.semantic_enricher import SemanticMetadataEnricher
 from sdcc_rag.enrichment.standard_enricher import StandardMetadataEnricher
 from sdcc_rag.domain.models import Document
 from sdcc_rag.ingestion.orchestrator import IngestionOrchestrator
@@ -22,8 +22,16 @@ def _build(store: FakeVectorStore, embedder: FakeEmbeddingProvider) -> Ingestion
     enricher = CompositeMetadataEnricher(
         [
             StandardMetadataEnricher(),
-            SemanticMetadataEnricher(FakeLLMProvider()),
-            ManualMetadataEnricher({"title": "Manuale SDCC", "author": "ACME"}),
+            ExtractorMetadataEnricher(FakeMetadataExtractor()),
+            ManualMetadataEnricher(
+                {
+                    "title": "Manuale SDCC",
+                    "author": "ACME",
+                    "category": "Tecnico",
+                    "description": "Guida operativa",
+                    "tags": "sdcc, rag",
+                }
+            ),
         ]
     )
     return IngestionOrchestrator(
@@ -58,9 +66,10 @@ def test_metadati_arricchiti_arrivano_nei_chunk(tmp_path: Path):
     _build(store, embedder).ingest_path(tmp_path)
 
     meta = next(iter(store.items.values())).chunk.metadata
-    # doc-level (tracciabilità + semantico + manuale) sceso nei chunk via splitter
-    assert {"content_sha256", "ingested_at", "source_stem", "summary", "keywords",
-            "title", "author"} <= meta.keys()
+    # doc-level (tracciabilità + automatico + manuale) sceso nei chunk via splitter
+    assert {"content_sha256", "ingested_at", "source_stem",
+            "summary", "keywords", "language", "suggested_categories", "entities",
+            "title", "author", "category", "description", "tags"} <= meta.keys()
     # chunk-level
     assert "char_count" in meta and "word_count" in meta
     # tutti i valori sono scalari (sopravvivono al filtro di ChromaVectorStore)
@@ -110,7 +119,8 @@ def test_ingest_documents_riusa_la_pipeline():
 
     # stesso arricchimento del flusso locale (doc-level + chunk-level) nei chunk
     meta = next(iter(store.items.values())).chunk.metadata
-    assert {"summary", "keywords", "title", "author", "char_count", "word_count"} <= meta.keys()
+    assert {"summary", "keywords", "language", "title", "author",
+            "char_count", "word_count"} <= meta.keys()
 
 
 def test_json_corrotto_registra_errore_senza_fermarsi(tmp_path: Path):

@@ -35,7 +35,9 @@ class RAGService:
 
     def answer(self, question: str) -> Answer:
         vector = self._embedder.embed_query(question)
-        retrieved = self._store.query(vector, self._top_k)
+        # `query_text=question` abilita l'hybrid search sugli store che la supportano
+        # (Azure AI Search: lessicale + vettoriale); gli store vettoriali lo ignorano.
+        retrieved = self._store.query(vector, self._top_k, query_text=question)
 
         # Soglia di rilevanza: scarta i chunk troppo distanti dalla query.
         # La policy vive nel controller; lo store si limita a riportare lo score.

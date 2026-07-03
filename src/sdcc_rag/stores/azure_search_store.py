@@ -16,12 +16,14 @@ Schema dell'indice `rag-documents` (creato da `infrastructure/setup_azure_search
 lo mette tra i metadata scalari) e ri-estratto in `query`. A differenza di Chroma, qui
 `metadata` è una stringa JSON: può quindi conservare anche valori non scalari (es. liste).
 
-Nota sullo score: `@search.score` di Azure (metrica cosine) è su scala diversa dal
-`1 - distance` di Chroma. Per questo l'adapter applica un **taglio di rilevanza**
-proprio, `settings.azure_search_min_score` (default 0.70), tarato sulla scala coseno
-di Azure: i match sotto soglia sono spuri e vengono rimossi in `query()` prima che il
-contesto raggiunga il modello generativo. La soglia è separata dal globale
-`retrieval_min_score` (usato da Chroma) proprio perché le scale non sono confrontabili.
+Nota sullo score: in **hybrid search** (testo + vettore) Azure fonde i risultati con
+RRF (Reciprocal Rank Fusion), quindi `@search.score` è il punteggio RRF, su scala
+diversa sia dalla cosine similarity sia dal `1 - distance` di Chroma. L'adapter applica
+comunque un **taglio di rilevanza** proprio, `settings.azure_search_min_score`
+(default 0.0 = nessun filtro, da ricalibrare sulla scala RRF del corpus reale): i match
+sotto soglia sono rimossi in `query()` prima che il contesto raggiunga il modello
+generativo. La soglia è separata dal globale `retrieval_min_score` (usato da Chroma)
+proprio perché le scale non sono confrontabili.
 """
 
 from __future__ import annotations
@@ -75,7 +77,9 @@ class AzureSearchVectorStore(IVectorStore):
         for start in range(0, len(documents), _BATCH_SIZE):
             self._client.upload_documents(documents=documents[start : start + _BATCH_SIZE])
 
-    def query(self, embedding: list[float], top_k: int = 5) -> list[RetrievedChunk]:
+    def query(
+        self, embedding: list[float], top_k: int = 5, query_text: str | None = None
+    ) -> list[RetrievedChunk]:
         from azure.search.documents.models import VectorizedQuery
 
         vector_query = VectorizedQuery(
@@ -83,8 +87,12 @@ class AzureSearchVectorStore(IVectorStore):
             k_nearest_neighbors=top_k,
             fields=_VECTOR_FIELD,
         )
+        # Hybrid search: passando SIA il vettore SIA il testo grezzo, Azure combina
+        # ricerca lessicale (BM25 sul campo `content` searchable) e vettoriale, fondendo
+        # i risultati con RRF. Con `query_text=None` degrada alla ricerca puramente
+        # vettoriale (retro-compatibile).
         results = self._client.search(
-            search_text=None,
+            search_text=query_text,
             vector_queries=[vector_query],
             top=top_k,
             select=["id", "content", "metadata"],

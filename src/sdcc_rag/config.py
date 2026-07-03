@@ -40,7 +40,10 @@ class Settings(BaseSettings):
     # --- LLM (arricchimento semantico) ---------------------------------------
     llm_provider: str = "ollama"  # "ollama" | "azure"
     ollama_llm_model: str = "llama3"
-    azure_llm_deployment: str = "gpt-4o-mini"  # nome del deployment del modello chat su Azure
+    azure_llm_deployment: str = "gpt-5.4-nano"  # deployment chat Azure (unico deployment reale)
+    # deployment dedicato all'estrazione dei metadati automatici (separato dalla
+    # generazione RAG): riusa endpoint/api-key/api-version di Azure OpenAI.
+    azure_metadata_deployment: str = "gpt-5.4-nano"
     semantic_max_chars: int = 4000  # testo max passato all'LLM per summary/keywords
 
     # --- Chunking ------------------------------------------------------------
@@ -58,10 +61,11 @@ class Settings(BaseSettings):
     azure_search_endpoint: str | None = None
     azure_search_admin_key: str | None = None
     azure_search_index_name: str = "rag-documents"
-    # Soglia di rilevanza (coseno) applicata dall'adapter Azure: scarta i match
-    # spuri a basso @search.score. Scala diversa da Chroma, perciò setting
-    # separato dal globale `retrieval_min_score` (0.0 = nessun filtro).
-    azure_search_min_score: float = 0.70
+    # Soglia di rilevanza applicata dall'adapter Azure: scarta i match spuri a basso
+    # @search.score. In hybrid search lo score è RRF (scala diversa dal coseno e da
+    # Chroma), perciò 0.0 = nessun filtro finché non ricalibrata sul corpus reale;
+    # setting separato dal globale `retrieval_min_score`.
+    azure_search_min_score: float = 0.0
 
     # --- Loader JSON ---------------------------------------------------------
     json_text_field: str = "text"  # campo da cui estrarre il testo nei record JSON

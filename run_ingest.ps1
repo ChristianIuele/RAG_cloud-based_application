@@ -1,7 +1,8 @@
 # Helper DX: attiva il virtualenv (se non gia' attivo) e lancia l'ingestion RAG.
 # Uso:
 #   .\run_ingest.ps1
-#   .\run_ingest.ps1 ./data --title "Doc"
+#   .\run_ingest.ps1 ./data --title "Doc" --author "ACME"
+#   .\run_ingest.ps1 ./data --title "Doc" --category "Tecnico" --description "..." --tags "sdcc,rag"
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 

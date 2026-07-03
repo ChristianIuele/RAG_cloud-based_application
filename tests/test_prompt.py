@@ -15,8 +15,10 @@ def _chunk(text: str, source: str) -> Chunk:
 
 
 def test_system_prompt_contiene_regole_anti_allucinazione():
-    # grounding: solo il contesto
-    assert "ESCLUSIVAMENTE" in SYSTEM_PROMPT
+    # persona: esperto di sistemi distribuiti
+    assert "esperto di sistemi distribuiti" in SYSTEM_PROMPT
+    # formattazione ricca (elenchi/grassetti) per leggibilità
+    assert "elenchi puntati o grassetti" in SYSTEM_PROMPT
     # frase di astensione esatta presente nel system
     assert ABSTENTION_TEXT in SYSTEM_PROMPT
     # regola di citazione numerica

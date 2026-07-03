@@ -128,6 +128,29 @@ def test_query_deserializza_risultati():
     assert vq.k_nearest_neighbors == 5
 
 
+def test_query_ibrida_passa_search_text():
+    # Hybrid search: il testo grezzo della domanda deve arrivare ad Azure come
+    # `search_text` (lessicale) insieme al VectorizedQuery (vettoriale).
+    store, fake = _store_with_fake()
+    fake.search_results = [{"id": "id-1", "content": "x", "@search.score": 1.0}]
+
+    store.query([0.1, 0.2, 0.3], top_k=5, query_text="cos'è l'SDCC?")
+
+    assert fake.last_search_kwargs["search_text"] == "cos'è l'SDCC?"
+    # il ramo vettoriale resta presente (ricerca ibrida, non solo lessicale)
+    assert fake.last_search_kwargs["vector_queries"][0].fields == "content_vector"
+
+
+def test_query_senza_testo_resta_vettoriale():
+    # Retro-compatibilità: senza query_text, search_text=None (pura ricerca vettoriale).
+    store, fake = _store_with_fake()
+    fake.search_results = [{"id": "id-1", "content": "x", "@search.score": 1.0}]
+
+    store.query([0.1, 0.2, 0.3], top_k=5)
+
+    assert fake.last_search_kwargs["search_text"] is None
+
+
 def test_query_filtra_chunk_sotto_soglia():
     # Mock di Azure con un match forte (0.85) e uno spurio (0.40).
     store, fake = _store_with_fake(min_score=0.70)

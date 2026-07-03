@@ -9,7 +9,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from sdcc_rag.domain.models import Chunk, Document, EmbeddedChunk, RetrievedChunk
+from sdcc_rag.domain.models import (
+    AutomaticMetadata,
+    Chunk,
+    Document,
+    EmbeddedChunk,
+    RetrievedChunk,
+)
 
 
 class IDocumentLoader(ABC):
@@ -58,8 +64,16 @@ class IVectorStore(ABC):
         """Inserisce/aggiorna i chunk usando chunk_id come chiave (idempotente)."""
 
     @abstractmethod
-    def query(self, embedding: list[float], top_k: int = 5) -> list[RetrievedChunk]:
-        """Restituisce i chunk più simili al vettore di query, con score di rilevanza."""
+    def query(
+        self, embedding: list[float], top_k: int = 5, query_text: str | None = None
+    ) -> list[RetrievedChunk]:
+        """Restituisce i chunk più simili al vettore di query, con score di rilevanza.
+
+        `query_text`, se fornito, è il testo grezzo della domanda: gli store che lo
+        supportano (es. Azure AI Search) lo usano per una ricerca *ibrida*
+        (lessicale + vettoriale). Gli store puramente vettoriali (es. Chroma) lo
+        ignorano. Opzionale e retro-compatibile.
+        """
 
     @abstractmethod
     def count(self) -> int:
@@ -80,6 +94,20 @@ class ILLMProvider(ABC):
         è True il provider chiede al modello una risposta in formato JSON (il
         parsing resta a carico del chiamante).
         """
+
+
+class IMetadataExtractor(ABC):
+    """Estrae metadati automatici dal testo di un documento tramite LLM.
+
+    Porta passiva: l'implementazione concreta (es. `AzureOpenAIMetadataExtractor`)
+    invia il testo a un modello con output strutturato e restituisce un
+    `AutomaticMetadata`. Degrado best-effort a carico dell'implementazione (un
+    errore non deve fermare la pipeline).
+    """
+
+    @abstractmethod
+    def extract(self, text: str) -> AutomaticMetadata:
+        """Analizza il testo e restituisce i metadati automatici estratti."""
 
 
 class IMetadataEnricher(ABC):

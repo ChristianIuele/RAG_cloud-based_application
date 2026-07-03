@@ -16,9 +16,11 @@ import json  # noqa: E402
 from sdcc_rag.domain.interfaces import (  # noqa: E402
     IEmbeddingProvider,
     ILLMProvider,
+    IMetadataExtractor,
     IVectorStore,
 )
 from sdcc_rag.domain.models import (  # noqa: E402
+    AutomaticMetadata,
     Chunk,
     EmbeddedChunk,
     RetrievedChunk,
@@ -60,7 +62,10 @@ class FakeVectorStore(IVectorStore):
         for ec in embedded_chunks:
             self.items[ec.chunk.chunk_id] = ec
 
-    def query(self, embedding: list[float], top_k: int = 5) -> list[RetrievedChunk]:
+    def query(
+        self, embedding: list[float], top_k: int = 5, query_text: str | None = None
+    ) -> list[RetrievedChunk]:
+        self.last_query_text = query_text  # per asserire il passaggio dell'hybrid text
         return [
             RetrievedChunk(chunk=ec.chunk, score=self._default_score)
             for ec in list(self.items.values())[:top_k]
@@ -80,6 +85,26 @@ class FakeLLMProvider(ILLMProvider):
         self, prompt: str, *, system: str | None = None, json_output: bool = False
     ) -> str:
         return json.dumps(self._payload)
+
+
+class FakeMetadataExtractor(IMetadataExtractor):
+    """Extractor finto: ritorna un `AutomaticMetadata` canonico configurabile."""
+
+    def __init__(self, metadata: AutomaticMetadata | None = None) -> None:
+        self._metadata = metadata or AutomaticMetadata(
+            summary="riassunto",
+            keywords=["alpha", "beta"],
+            suggested_categories=["tecnico"],
+            language="it",
+            entities=["SDCC"],
+        )
+        self.calls = 0
+        self.last_text: str | None = None
+
+    def extract(self, text: str) -> AutomaticMetadata:
+        self.calls += 1
+        self.last_text = text
+        return self._metadata
 
 
 class BrokenLLMProvider(ILLMProvider):

@@ -4,11 +4,13 @@
 partire dalla configurazione, le inietta nell'orchestratore e avvia l'ingestion.
 
 Uso:
-    python scripts/ingest.py [PATH] [--title T] [--author A] [--meta KEY=VALUE ...]
+    python scripts/ingest.py [PATH] [--title T] [--author A] [--category C]
+        [--description D] [--tags "a,b,c"] [--meta KEY=VALUE ...]
 
 Se PATH è omesso, usa `Settings.data_path` (default ./data). I metadati manuali
-(--title/--author/--meta) sono costanti per l'intero run e vengono iniettati in
-ogni documento durante l'arricchimento.
+(--title/--author/--category/--description/--tags/--meta) sono costanti per
+l'intero run e vengono iniettati in ogni documento durante l'arricchimento; i
+metadati automatici (summary, keywords, language, ...) sono estratti dall'LLM.
 """
 
 from __future__ import annotations
@@ -22,12 +24,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from sdcc_rag.config import Settings  # noqa: E402
 from sdcc_rag.embeddings.factory import create_embedding_provider  # noqa: E402
+from sdcc_rag.enrichment.azure_metadata_extractor import AzureOpenAIMetadataExtractor  # noqa: E402
 from sdcc_rag.enrichment.composite_enricher import CompositeMetadataEnricher  # noqa: E402
+from sdcc_rag.enrichment.extractor_enricher import ExtractorMetadataEnricher  # noqa: E402
 from sdcc_rag.enrichment.manual_enricher import ManualMetadataEnricher  # noqa: E402
-from sdcc_rag.enrichment.semantic_enricher import SemanticMetadataEnricher  # noqa: E402
 from sdcc_rag.enrichment.standard_enricher import StandardMetadataEnricher  # noqa: E402
 from sdcc_rag.ingestion.orchestrator import IngestionOrchestrator  # noqa: E402
-from sdcc_rag.llm.factory import create_llm_provider  # noqa: E402
 from sdcc_rag.loaders.json_loader import JsonLoader  # noqa: E402
 from sdcc_rag.loaders.text_loader import TextLoader  # noqa: E402
 from sdcc_rag.splitters.recursive_splitter import RecursiveCharacterSplitter  # noqa: E402
@@ -39,6 +41,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("path", nargs="?", help="cartella da ingerire (default: DATA_PATH)")
     parser.add_argument("--title", help="metadato manuale: titolo")
     parser.add_argument("--author", help="metadato manuale: autore")
+    parser.add_argument("--category", help="metadato manuale: categoria")
+    parser.add_argument("--description", help="metadato manuale: descrizione")
+    parser.add_argument(
+        "--tags",
+        help="metadato manuale: tag separati da virgola (es. 'sdcc,rag,azure')",
+    )
     parser.add_argument(
         "--meta",
         action="append",
@@ -55,6 +63,15 @@ def _manual_metadata(args: argparse.Namespace) -> dict[str, str]:
         manual["title"] = args.title
     if args.author:
         manual["author"] = args.author
+    if args.category:
+        manual["category"] = args.category
+    if args.description:
+        manual["description"] = args.description
+    if args.tags:
+        # normalizza a stringa scalare join-virgola (coerente con i metadati automatici)
+        tags = [t.strip() for t in args.tags.split(",") if t.strip()]
+        if tags:
+            manual["tags"] = ", ".join(tags)
     for item in args.meta:
         key, sep, value = item.partition("=")
         if not sep:
@@ -74,12 +91,13 @@ def main() -> None:
     embedder = create_embedding_provider(settings)
     store = create_vector_store(settings)
 
-    # Catena di arricchimento: tracciabilità → semantico (LLM) → manuale (utente).
-    llm = create_llm_provider(settings)
+    # Catena di arricchimento: tracciabilità → automatico (LLM) → manuale (utente).
+    # L'extractor automatico ha la precedenza sul manuale per le chiavi omonime?
+    # No: il manuale è applicato per ultimo, così l'intento esplicito dell'utente vince.
     enricher = CompositeMetadataEnricher(
         [
             StandardMetadataEnricher(),
-            SemanticMetadataEnricher(llm, max_chars=settings.semantic_max_chars),
+            ExtractorMetadataEnricher(AzureOpenAIMetadataExtractor(settings)),
             ManualMetadataEnricher(_manual_metadata(args)),
         ]
     )
