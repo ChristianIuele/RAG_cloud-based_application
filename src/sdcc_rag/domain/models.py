@@ -82,6 +82,7 @@ class IngestionReport:
 
     documents_loaded: int = 0
     chunks_indexed: int = 0
+    documents_pruned: int = 0  # documenti orfani rimossi dal DB durante il sync
     files_skipped: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -90,6 +91,7 @@ class IngestionReport:
             "Ingestion report",
             f"  documenti caricati : {self.documents_loaded}",
             f"  chunk indicizzati  : {self.chunks_indexed}",
+            f"  documenti rimossi  : {self.documents_pruned}",
             f"  file saltati       : {len(self.files_skipped)}",
             f"  errori             : {len(self.errors)}",
         ]

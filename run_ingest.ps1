@@ -3,6 +3,8 @@
 #   .\run_ingest.ps1
 #   .\run_ingest.ps1 ./data --title "Doc" --author "ACME"
 #   .\run_ingest.ps1 ./data --title "Doc" --category "Tecnico" --description "..." --tags "sdcc,rag"
+#   .\run_ingest.ps1 --sync  # <-- Nuovo: allinea il DB alla sorgente (elimina chunk orfani)
+
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 

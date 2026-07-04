@@ -57,6 +57,7 @@ class FakeVectorStore(IVectorStore):
     def __init__(self, default_score: float = 1.0) -> None:
         self.items: dict[str, EmbeddedChunk] = {}
         self._default_score = default_score
+        self.deleted_doc_ids: list[str] = []  # tracciamento per i test di purge
 
     def upsert(self, embedded_chunks: list[EmbeddedChunk]) -> None:
         for ec in embedded_chunks:
@@ -73,6 +74,16 @@ class FakeVectorStore(IVectorStore):
 
     def count(self) -> int:
         return len(self.items)
+
+    def delete_by_doc_id(self, doc_id: str) -> None:
+        self.deleted_doc_ids.append(doc_id)
+        for chunk_id in [
+            cid for cid, ec in self.items.items() if ec.chunk.source == doc_id
+        ]:
+            del self.items[chunk_id]
+
+    def get_all_doc_ids(self) -> set[str]:
+        return {ec.chunk.source for ec in self.items.values()}
 
 
 class FakeLLMProvider(ILLMProvider):

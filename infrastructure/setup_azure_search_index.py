@@ -8,6 +8,7 @@ ad Azure AI Search; non tocca il codice RAG esistente.
 Lo schema riproduce ciò che oggi salviamo in Chroma (vedi `stores/chroma_store.py`):
 
     id              -> chunk_id deterministico (chiave primaria)
+    doc_id          -> Document.source (filtrabile/facetable: purge dei chunk orfani)
     content         -> testo del chunk (searchable)
     metadata        -> dizionario dei metadati serializzato in JSON (non searchable)
     content_vector  -> embedding del chunk (HNSW vector search)
@@ -101,6 +102,14 @@ def _build_index(name: str, dimension: int):
 
     fields = [
         SimpleField(name="id", type=SearchFieldDataType.String, key=True),
+        # doc_id (== Document.source): filtrabile per la cancellazione per documento
+        # e facetable per elencare i doc_id distinti (Sync & Purge dei chunk orfani).
+        SimpleField(
+            name="doc_id",
+            type=SearchFieldDataType.String,
+            filterable=True,
+            facetable=True,
+        ),
         SearchableField(name="content", type=SearchFieldDataType.String),
         # SimpleField non è searchable: archivia i metadati come stringa JSON.
         SimpleField(name="metadata", type=SearchFieldDataType.String),

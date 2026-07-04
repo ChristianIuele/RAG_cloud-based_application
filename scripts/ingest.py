@@ -54,6 +54,16 @@ def _parse_args() -> argparse.Namespace:
         metavar="KEY=VALUE",
         help="metadato manuale arbitrario (ripetibile)",
     )
+    parser.add_argument(
+        "--sync",
+        action="store_true",
+        help=(
+            "modalità Sync & Purge: allinea il DB alla sorgente eliminando i chunk "
+            "orfani (documenti modificati o rimossi). ATTENZIONE: cancella dal DB i "
+            "documenti non presenti in questo run, quindi usalo solo su run che "
+            "coprono l'INTERO corpus, non su una sottocartella."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -114,10 +124,18 @@ def main() -> None:
     source = settings.document_source.lower()
     if source == "azure":
         documents = _load_azure_documents(settings, loaders)
-        report = orchestrator.ingest_documents(documents)
+        report = (
+            orchestrator.sync_and_ingest(documents)
+            if args.sync
+            else orchestrator.ingest_documents(documents)
+        )
     elif source == "local":
         root = Path(args.path) if args.path else Path(settings.data_path)
-        report = orchestrator.ingest_path(root)
+        report = (
+            orchestrator.sync_and_ingest_path(root)
+            if args.sync
+            else orchestrator.ingest_path(root)
+        )
     else:
         raise SystemExit(
             f"DOCUMENT_SOURCE sconosciuto: {settings.document_source!r} "

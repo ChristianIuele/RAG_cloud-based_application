@@ -59,6 +59,17 @@ class ChromaVectorStore(IVectorStore):
     def count(self) -> int:
         return self._collection.count()
 
+    def delete_by_doc_id(self, doc_id: str) -> None:
+        # `source` è archiviato come metadato scalare (vedi `_metadata`): il filtro
+        # `where` elimina in un colpo tutti i chunk del documento.
+        self._collection.delete(where={"source": doc_id})
+
+    def get_all_doc_ids(self) -> set[str]:
+        # `.get()` senza `ids` restituisce l'intera collezione; bastano i metadata.
+        result = self._collection.get(include=["metadatas"])
+        metadatas = result.get("metadatas") or []
+        return {str(m["source"]) for m in metadatas if m and "source" in m}
+
     @staticmethod
     def _metadata(chunk: Chunk) -> dict[str, object]:
         # Chroma accetta solo metadata scalari; `source` viene incluso per il retrieval.

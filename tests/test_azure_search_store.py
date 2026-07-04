@@ -16,19 +16,35 @@ from sdcc_rag.domain.models import Chunk, EmbeddedChunk
 from sdcc_rag.stores.azure_search_store import AzureSearchVectorStore
 
 
+class FakeSearchResults(list):
+    """Iterabile dei risultati che espone anche `get_facets()` (come SearchItemPaged)."""
+
+    def __init__(self, items, facets=None) -> None:
+        super().__init__(items)
+        self._facets = facets
+
+    def get_facets(self):
+        return self._facets
+
+
 class FakeSearchClient:
-    """Sostituto del SearchClient Azure: registra gli upload e risponde a search."""
+    """Sostituto del SearchClient Azure: registra upload/delete e risponde a search."""
 
     def __init__(self) -> None:
         self.uploaded_batches: list[list[dict]] = []
+        self.deleted_batches: list[list[dict]] = []
         self.search_results: list[dict] = []
+        self.facets: dict | None = None
 
     def upload_documents(self, documents):
         self.uploaded_batches.append(list(documents))
 
+    def delete_documents(self, documents):
+        self.deleted_batches.append(list(documents))
+
     def search(self, **kwargs):
         self.last_search_kwargs = kwargs
-        return iter(self.search_results)
+        return FakeSearchResults(self.search_results, self.facets)
 
     def get_document_count(self) -> int:
         return sum(len(b) for b in self.uploaded_batches)
@@ -71,6 +87,7 @@ def test_to_document_serializza_metadata_e_source():
     doc = AzureSearchVectorStore._to_document(ec)
 
     assert doc["id"] == "id-1"
+    assert doc["doc_id"] == "a/b.txt"  # campo top-level filtrabile (== source)
     assert doc["content"] == "ciao"
     assert doc["content_vector"] == [0.1, 0.2, 0.3]
     meta = json.loads(doc["metadata"])
@@ -192,3 +209,61 @@ def test_count_delega_al_client():
     store, fake = _store_with_fake()
     store.upsert([_embedded("id-1"), _embedded("id-2")])
     assert store.count() == 2
+
+
+# --- Sync & Purge: delete_by_doc_id / get_all_doc_ids ------------------------
+
+
+def test_delete_by_doc_id_cerca_ids_e_cancella():
+    store, fake = _store_with_fake()
+    # Il documento "doc.txt" ha due chunk indicizzati: la query filtrata li restituisce.
+    fake.search_results = [{"id": "id-1"}, {"id": "id-2"}]
+
+    store.delete_by_doc_id("doc.txt")
+
+    # Prima una search filtrata sul campo top-level doc_id (solo la chiave `id`)...
+    assert fake.last_search_kwargs["filter"] == "doc_id eq 'doc.txt'"
+    assert fake.last_search_kwargs["select"] == ["id"]
+    # ...poi la cancellazione delle chiavi trovate.
+    assert fake.deleted_batches == [[{"id": "id-1"}, {"id": "id-2"}]]
+
+
+def test_delete_by_doc_id_senza_match_non_cancella():
+    store, fake = _store_with_fake()
+    fake.search_results = []  # nessun chunk per quel documento
+
+    store.delete_by_doc_id("assente.txt")
+
+    assert fake.deleted_batches == []  # nessuna chiamata di delete
+
+
+def test_delete_by_doc_id_esegue_escape_apici():
+    store, fake = _store_with_fake()
+    fake.search_results = [{"id": "id-1"}]
+
+    store.delete_by_doc_id("l'altro.txt")
+
+    # Gli apici singoli sono raddoppiati (escape OData) per non rompere il filtro.
+    assert fake.last_search_kwargs["filter"] == "doc_id eq 'l''altro.txt'"
+
+
+def test_get_all_doc_ids_da_facet():
+    store, fake = _store_with_fake()
+    fake.facets = {
+        "doc_id": [
+            {"value": "a.txt", "count": 3},
+            {"value": "b.txt", "count": 1},
+        ]
+    }
+
+    assert store.get_all_doc_ids() == {"a.txt", "b.txt"}
+    # Faceting su doc_id senza scaricare i documenti (top=0).
+    assert fake.last_search_kwargs["facets"] == ["doc_id,count:10000"]
+    assert fake.last_search_kwargs["top"] == 0
+
+
+def test_get_all_doc_ids_store_vuoto():
+    store, fake = _store_with_fake()
+    fake.facets = None  # Azure può restituire None se non ci sono facet
+
+    assert store.get_all_doc_ids() == set()

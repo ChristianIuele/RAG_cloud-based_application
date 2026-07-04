@@ -132,3 +132,76 @@ def test_json_corrotto_registra_errore_senza_fermarsi(tmp_path: Path):
 
     assert report.documents_loaded == 1  # il txt è stato comunque processato
     assert any("rotto.json" in e for e in report.errors)
+
+
+# --- Sync & Purge dei chunk orfani -------------------------------------------
+
+
+def test_sync_and_ingest_rimuove_documenti_orfani():
+    a = Document(content="alpha beta gamma delta " * 10, source="doc://a.txt")
+    b = Document(content="uno due tre quattro cinque " * 10, source="doc://b.txt")
+
+    store, embedder = FakeVectorStore(), FakeEmbeddingProvider()
+    orch = _build(store, embedder)
+
+    orch.sync_and_ingest([a, b])  # corpus iniziale: A + B
+    assert store.get_all_doc_ids() == {"doc://a.txt", "doc://b.txt"}
+
+    # B sparisce dalla sorgente: i suoi chunk vanno purgati come orfani.
+    report = orch.sync_and_ingest([a])
+
+    assert report.documents_pruned == 1
+    assert store.get_all_doc_ids() == {"doc://a.txt"}
+    assert "doc://b.txt" in store.deleted_doc_ids
+
+
+def test_sync_and_ingest_purge_versioni_precedenti():
+    # Scenario centrale: un documento viene MODIFICATO. I chunk_id (hash del testo)
+    # cambiano, quindi senza purge le versioni vecchie resterebbero orfane nel DB.
+    v1 = Document(content="alpha beta gamma delta " * 10, source="doc://a.txt")
+
+    store, embedder = FakeVectorStore(), FakeEmbeddingProvider()
+    orch = _build(store, embedder)
+
+    orch.sync_and_ingest([v1])
+    old_ids = set(store.items.keys())
+    assert old_ids  # sono stati indicizzati dei chunk
+
+    v2 = Document(content="testo completamente diverso ora " * 12, source="doc://a.txt")
+    orch.sync_and_ingest([v2])
+
+    # Nessun chunk_id della v1 sopravvive e il documento resta unico.
+    assert old_ids.isdisjoint(store.items.keys())
+    assert store.get_all_doc_ids() == {"doc://a.txt"}
+    assert all(ec.chunk.source == "doc://a.txt" for ec in store.items.values())
+
+
+def test_sync_and_ingest_idempotente():
+    a = Document(content="alpha beta gamma delta " * 10, source="doc://a.txt")
+
+    store, embedder = FakeVectorStore(), FakeEmbeddingProvider()
+    orch = _build(store, embedder)
+
+    orch.sync_and_ingest([a])
+    count_after_first = store.count()
+    report = orch.sync_and_ingest([a])  # stessa sorgente, nessuna modifica
+
+    assert store.count() == count_after_first  # nessun duplicato
+    assert report.documents_pruned == 0  # nessun orfano
+
+
+def test_sync_and_ingest_path_purga_file_rimosso(tmp_path: Path):
+    (tmp_path / "a.txt").write_text("alpha beta gamma delta " * 10, encoding="utf-8")
+    (tmp_path / "b.txt").write_text("uno due tre quattro " * 10, encoding="utf-8")
+
+    store, embedder = FakeVectorStore(), FakeEmbeddingProvider()
+    orch = _build(store, embedder)
+
+    orch.sync_and_ingest_path(tmp_path)
+    assert store.get_all_doc_ids() == {str(tmp_path / "a.txt"), str(tmp_path / "b.txt")}
+
+    (tmp_path / "b.txt").unlink()  # file eliminato dalla sorgente
+    report = orch.sync_and_ingest_path(tmp_path)
+
+    assert report.documents_pruned == 1
+    assert store.get_all_doc_ids() == {str(tmp_path / "a.txt")}

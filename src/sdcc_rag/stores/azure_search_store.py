@@ -8,6 +8,7 @@ sono calcolati a monte dall'`IEmbeddingProvider` (orchestratore in ingestion,
 Schema dell'indice `rag-documents` (creato da `infrastructure/setup_azure_search_index.py`):
 
     id              chiave (chunk_id deterministico)
+    doc_id          Document.source (filtrabile/facetable: purge dei chunk orfani)
     content         testo del chunk (searchable)
     metadata        dizionario dei metadati serializzato in JSON (non searchable)
     content_vector  embedding del chunk (HNSW vector search)
@@ -105,12 +106,42 @@ class AzureSearchVectorStore(IVectorStore):
     def count(self) -> int:
         return self._client.get_document_count()
 
+    def delete_by_doc_id(self, doc_id: str) -> None:
+        # `metadata` è una stringa JSON non filtrabile: la cancellazione per documento
+        # si appoggia al campo top-level `doc_id` (filtrabile). Prima si recuperano le
+        # chiavi (`id` = chunk_id) del documento, poi si cancellano a batch.
+        escaped = doc_id.replace("'", "''")  # escape OData degli apici singoli
+        results = self._client.search(
+            search_text="*",
+            filter=f"doc_id eq '{escaped}'",
+            select=["id"],
+        )
+        ids = [result["id"] for result in results]
+        if not ids:
+            return
+        for start in range(0, len(ids), _BATCH_SIZE):
+            batch = ids[start : start + _BATCH_SIZE]
+            self._client.delete_documents(documents=[{"id": i} for i in batch])
+
+    def get_all_doc_ids(self) -> set[str]:
+        # Faceting sul campo `doc_id`: una sola chiamata restituisce i valori distinti
+        # (con `top=0` non scarica i documenti). `count:10000` alza il limite di default (10).
+        results = self._client.search(
+            search_text="*",
+            facets=["doc_id,count:10000"],
+            top=0,
+        )
+        facets = results.get_facets() or {}
+        return {facet["value"] for facet in facets.get("doc_id", [])}
+
     @staticmethod
     def _to_document(ec: EmbeddedChunk) -> dict[str, object]:
-        # `source` viaggia dentro il JSON di metadata (speculare a ChromaVectorStore).
+        # `source` viaggia dentro il JSON di metadata (speculare a ChromaVectorStore) e,
+        # in più, come campo top-level `doc_id` filtrabile per il purge dei chunk orfani.
         metadata = {"source": ec.chunk.source, **ec.chunk.metadata}
         return {
             "id": ec.chunk.chunk_id,
+            "doc_id": ec.chunk.source,
             "content": ec.chunk.text,
             "metadata": json.dumps(metadata, ensure_ascii=False),
             _VECTOR_FIELD: ec.embedding,

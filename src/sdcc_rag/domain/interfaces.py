@@ -79,6 +79,23 @@ class IVectorStore(ABC):
     def count(self) -> int:
         """Numero di chunk attualmente indicizzati."""
 
+    @abstractmethod
+    def delete_by_doc_id(self, doc_id: str) -> None:
+        """Elimina tutti i chunk appartenenti a un documento.
+
+        `doc_id` coincide con `Document.source` (l'identità che deriva i `chunk_id`).
+        Serve a fare "piazza pulita" delle versioni precedenti di un documento
+        prima di re-indicizzarlo, così i chunk-hash obsoleti non restano orfani.
+        """
+
+    @abstractmethod
+    def get_all_doc_ids(self) -> set[str]:
+        """Insieme dei `doc_id` (== `Document.source`) distinti presenti nello store.
+
+        Usato dalla fase di *purge* per individuare i documenti ancora indicizzati
+        ma non più presenti nella sorgente, da eliminare via `delete_by_doc_id`.
+        """
+
 
 class ILLMProvider(ABC):
     """Modello di linguaggio per l'arricchimento semantico (summary, keywords)."""
