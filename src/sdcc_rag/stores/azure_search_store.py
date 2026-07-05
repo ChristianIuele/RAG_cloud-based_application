@@ -67,7 +67,7 @@ class AzureSearchVectorStore(IVectorStore):
             index_name=settings.azure_search_index_name,
             credential=AzureKeyCredential(settings.azure_search_admin_key),
         )
-        # Soglia coseno per scartare i match spuri (vedi docstring di modulo).
+        # Soglia RRF per scartare i match spuri della hybrid search (vedi docstring).
         self._min_score = settings.azure_search_min_score
 
     def upsert(self, embedded_chunks: list[EmbeddedChunk]) -> None:
@@ -99,8 +99,8 @@ class AzureSearchVectorStore(IVectorStore):
             select=["id", "content", "metadata"],
         )
         retrieved = [self._to_retrieved(result) for result in results]
-        # Taglio di rilevanza: i match sotto la soglia coseno sono spuri e non
-        # devono entrare nel contesto passato al modello generativo.
+        # Taglio di rilevanza: i match sotto la soglia RRF (`azure_search_min_score`)
+        # sono spuri e non devono entrare nel contesto passato al modello generativo.
         return [rc for rc in retrieved if rc.score >= self._min_score]
 
     def count(self) -> int:

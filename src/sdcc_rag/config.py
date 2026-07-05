@@ -62,10 +62,11 @@ class Settings(BaseSettings):
     azure_search_admin_key: str | None = None
     azure_search_index_name: str = "rag-documents"
     # Soglia di rilevanza applicata dall'adapter Azure: scarta i match spuri a basso
-    # @search.score. In hybrid search lo score è RRF (scala diversa dal coseno e da
-    # Chroma), perciò 0.0 = nessun filtro finché non ricalibrata sul corpus reale;
-    # setting separato dal globale `retrieval_min_score`.
-    azure_search_min_score: float = 0.0
+    # @search.score. In hybrid search lo score è RRF (Reciprocal Rank Fusion, k=60),
+    # su scala diversa dal coseno e da Chroma: i punteggi tipici stanno tra ~0.01 e
+    # ~0.02, quindi il default 0.015 filtra i match palesemente irrilevanti senza
+    # azzerare il recall. Setting separato dal globale `retrieval_min_score`.
+    azure_search_min_score: float = 0.015
 
     # --- Loader JSON ---------------------------------------------------------
     json_text_field: str = "text"  # campo da cui estrarre il testo nei record JSON
@@ -77,6 +78,7 @@ class Settings(BaseSettings):
 
     # --- Retrieval / query ---------------------------------------------------
     retrieval_top_k: int = 5  # numero di chunk recuperati per domanda
-    # soglia di rilevanza (similarità coseno): 0.0 = nessun filtro finché non
-    # viene calibrata contro il corpus reale.
-    retrieval_min_score: float = 0.0
+    # soglia di rilevanza (similarità coseno) applicata da RAGService sul percorso
+    # Chroma: 0.3 scarta i chunk poco pertinenti (anti top-K pollution) mantenendo
+    # il recall utile. Da ricalibrare sul corpus reale se necessario.
+    retrieval_min_score: float = 0.3
