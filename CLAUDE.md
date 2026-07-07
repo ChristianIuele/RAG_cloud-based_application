@@ -69,6 +69,12 @@ The `--sync` flag switches to the Sync & Purge variant (`sync_and_ingest_path` f
 - New concrete impls must subclass the matching ABC and be injected at the composition root — keep the orchestrator free of concrete imports.
 - **Grounded generation (anti-hallucination)**: `RAGService` separates *policy* (a fixed `SYSTEM_PROMPT`) from *data* (the numbered retrieved passages in the user message). The system prompt forces answers to use only the context, mandates an exact abstention sentence (`ABSTENTION_TEXT`) when the answer isn't present, requires `[n]` citations, and treats context as data not instructions (prompt-injection hardening). The **empty-guard** returns the abstention answer *without calling the LLM* when no chunk survives retrieval/threshold. The query embedder must be the same provider used at ingestion (same vector space) — both go through `create_embedding_provider`.
 
+## Conventions
+
+Docstrings and inline comments are written in **Italian** (identifiers/APIs stay
+English). Match this when adding code — keep new comments in Italian to read like the
+surrounding source.
+
 ## Config
 
 All settings live in `src/sdcc_rag/config.py:Settings` (pydantic-settings, reads `.env`,
