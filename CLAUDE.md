@@ -19,6 +19,7 @@ copy .env.example .env                           # then fill in keys
 python scripts/ingest.py [PATH] [--title T] [--author A] [--category C] \
     [--description D] [--tags "a,b,c"] [--meta KEY=VALUE ...] [--sync]   # ingestion (default ./data)
 python scripts/query.py [--top-k N] [--min-score F]   # interactive query REPL
+streamlit run app.py                             # web UI (ingestion sidebar + RAG chat); needs `pip install streamlit`
 python infrastructure/setup_azure_search_index.py [--force]   # provision Azure AI Search index (VECTOR_STORE=azure_search)
 pytest                                           # all tests
 pytest tests/test_orchestrator.py::test_ingest_conta_documenti_e_chunk   # single test
@@ -56,6 +57,16 @@ It branches on `DOCUMENT_SOURCE` (`local`|`azure`): `local` walks `data_path`;
 `orchestrator.ingest_documents` (the split/enrich/embed/upsert stages are shared).
 The `--sync` flag switches to the Sync & Purge variant (`sync_and_ingest_path` for
 `local`, `sync_and_ingest` for `azure`); without it, the plain append/upsert flow runs.
+
+`app.py` (Streamlit) is a **third composition root** alongside `scripts/ingest.py` and
+`scripts/query.py` — the only modules that know concrete classes. It caches the shared,
+expensive singletons (`@st.cache_resource`: embedder, store, LLM, `RAGService`) so ingestion
+and chat reuse the *same* embedder+store (same vector space); the orchestrator is rebuilt per
+upload to inject that file's `ManualMetadataEnricher`. Its ingestion path always **uploads the
+raw file to Blob first, then re-reads it via `AzureBlobDocumentLoader`** (so provenance/idempotency
+match the `DOCUMENT_SOURCE=azure` flow) — it fails hard if Azure Storage creds are missing, and
+enforces UI-side guards not present in the CLI: an extension whitelist (`txt`/`md`/`json`) and a
+5 MB max upload size. Note `streamlit` is imported here but is **not** in `requirements.txt`.
 
 ### Key design rules
 
