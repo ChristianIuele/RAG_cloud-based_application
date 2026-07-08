@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 
 if (-not $env:VIRTUAL_ENV) {
-    $activate = Join-Path $root "..\.venv\Scripts\Activate.ps1"
+    $activate = Join-Path $root ".venv/Scripts/Activate.ps1"
     if (-not (Test-Path $activate)) {
         Write-Error "Virtualenv non trovato in '$activate'. Crealo con: python -m venv venv"
         exit 1

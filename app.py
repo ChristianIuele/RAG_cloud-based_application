@@ -52,6 +52,10 @@ ALLOWED_EXTENSIONS = ["txt", "md", "json"]
 MAX_FILE_MB = 5
 MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024
 
+# Avatar personalizzati per i messaggi della chat (look più curato).
+ASSISTANT_AVATAR = "🤖"
+USER_AVATAR = "🧑‍💻"
+
 
 # --- Risorse condivise (costruite una sola volta) ---------------------------
 @st.cache_resource
@@ -194,8 +198,49 @@ def _ingest_from_blob(shared: dict, blob_name: str, manual: dict[str, str]):
     return orchestrator.ingest_documents(documents)
 
 
+@st.cache_data(ttl=30)
+def _list_corpus_blobs(container_name: str, conn_str: str) -> list[str]:
+    """Nomi dei blob nel container (RF-004: source of truth dei file grezzi).
+
+    Cache breve (ttl=30s) così l'elenco si aggiorna poco dopo un'ingestione senza
+    ricolpire Blob a ogni rerun. Argomenti scalari (stringhe) per farla hashabile.
+    """
+    from azure.storage.blob import BlobServiceClient
+
+    service = BlobServiceClient.from_connection_string(conn_str)
+    container = service.get_container_client(container_name)
+    return sorted(b.name for b in container.list_blobs())
+
+
+@st.cache_data(ttl=30)
+def _download_blob_bytes(container_name: str, conn_str: str, blob_name: str) -> bytes:
+    """Scarica i byte del blob originale (RF-004: download del file grezzo).
+
+    Cachato (ttl=30s, argomenti scalari) così `st.download_button` ha i dati pronti
+    al render senza riscaricare a ogni rerun del modale.
+    """
+    from azure.storage.blob import BlobServiceClient
+
+    service = BlobServiceClient.from_connection_string(conn_str)
+    container = service.get_container_client(container_name)
+    return container.download_blob(blob_name).readall()
+
+
 # --- UI ---------------------------------------------------------------------
 st.set_page_config(page_title="SDCC RAG", page_icon="📚", layout="wide")
+
+# CSS white-label: nasconde il chrome di default di Streamlit (menu hamburger,
+# footer "Made with Streamlit", toolbar) per un look più professionale.
+st.markdown(
+    """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    [data-testid="stToolbar"] {visibility: hidden;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 shared = get_shared()
 settings = shared["settings"]
@@ -203,23 +248,31 @@ service = shared["service"]
 store = shared["store"]
 
 
-# --- Sidebar: ingestione + scudo di sicurezza -------------------------------
-with st.sidebar:
-    st.header("📥 Ingestione documenti")
+# --- Modali (pop-up) --------------------------------------------------------
+# Definiti dopo i globali (settings/shared/store) che referenziano e prima della
+# sidebar che li apre.
+@st.dialog("Carica un nuovo documento nel Corpus")
+def ingest_dialog() -> None:
+    """Modale di ingestione: upload + metadati + scudo di sicurezza (AB-01/AB-02).
 
+    La logica di upload su Blob (RF-004) e di indicizzazione è invariata: riusa
+    `_upload_raw_to_blob` e `_ingest_from_blob`. Dentro una funzione non si usa
+    `st.stop()` (fermerebbe l'intero script): la guardia AB-02 disabilita il
+    bottone e mostra l'errore.
+    """
     uploaded = st.file_uploader(
         "Carica un documento",
         type=ALLOWED_EXTENSIONS,  # AB-01: whitelist estensioni
         help=f"Estensioni consentite: {', '.join(ALLOWED_EXTENSIONS)}. Max {MAX_FILE_MB} MB.",
     )
 
-    # AB-02: controllo dimensione. Errore bloccante se il file supera il limite.
-    if uploaded is not None and uploaded.size > MAX_FILE_BYTES:
+    # AB-02: file oltre il limite → errore + bottone disabilitato (niente st.stop).
+    too_big = uploaded is not None and uploaded.size > MAX_FILE_BYTES
+    if too_big:
         st.error(
             f"File troppo grande ({uploaded.size / 1024 / 1024:.1f} MB). "
             f"Limite massimo: {MAX_FILE_MB} MB."
         )
-        st.stop()
 
     st.subheader("Metadati")
     title = st.text_input("Titolo")
@@ -228,9 +281,9 @@ with st.sidebar:
     description = st.text_area("Descrizione")
     tags = st.text_input("Tag (separati da virgola)", placeholder="sdcc, rag, azure")
 
-    ingest_clicked = st.button("Ingerisci", type="primary", disabled=uploaded is None)
-
-    if ingest_clicked and uploaded is not None:
+    if st.button(
+        "Ingerisci", type="primary", disabled=uploaded is None or too_big
+    ):
         manual = _manual_metadata(title, author, category, description, tags)
         try:
             with st.spinner("Salvataggio del file crudo su Blob Storage (RF-004)…"):
@@ -243,6 +296,8 @@ with st.sidebar:
         except Exception as exc:  # noqa: BLE001 - superficie UI: mostra l'errore
             st.error(f"Ingestione fallita: {exc}")
         else:
+            # Invalida la cache così l'archivio riflette subito il nuovo file.
+            _list_corpus_blobs.clear()
             st.success(
                 f"'{uploaded.name}' indicizzato: "
                 f"{report.documents_loaded} documento/i, {report.chunks_indexed} chunk. "
@@ -250,6 +305,58 @@ with st.sidebar:
             )
             if report.errors:
                 st.warning("Errori durante l'ingestione:\n" + "\n".join(report.errors))
+
+
+@st.dialog("Archivio Documenti", width="large")
+def archive_dialog() -> None:
+    """Modale archivio: elenco dei documenti del corpus con download (RF-004).
+
+    Riusa `_list_corpus_blobs` per la lista e `_download_blob_bytes` per i byte del
+    file originale. Ogni riga è a colonne (nome | azione). Degrada in silenzio se
+    lo storage non è raggiungibile.
+    """
+    try:
+        blobs = _list_corpus_blobs(
+            settings.azure_storage_container_name or "",
+            settings.azure_storage_connection_string or "",
+        )
+    except Exception:  # noqa: BLE001 - credenziali assenti / errore di rete: degrada in silenzio
+        blobs = []
+
+    if not blobs:
+        st.info("Storage non connesso o corpus vuoto.")
+        return
+
+    st.caption(f"{len(blobs)} documento/i nel corpus.")
+    for name in blobs:
+        col1, col2 = st.columns([4, 1])
+        col1.markdown(f"📄 **{name}**")
+        try:
+            data = _download_blob_bytes(
+                settings.azure_storage_container_name or "",
+                settings.azure_storage_connection_string or "",
+                name,
+            )
+            col2.download_button(
+                "⬇️ Scarica",
+                data=data,
+                file_name=name,
+                key=f"dl_{name}",
+                use_container_width=True,
+            )
+        except Exception:  # noqa: BLE001 - singolo file non scaricabile: non blocca la lista
+            col2.caption("n/d")
+
+
+# --- Sidebar: azioni in evidenza --------------------------------------------
+with st.sidebar:
+    st.title("📚 SDCC RAG")
+    st.caption("Assistente documentale fondato sul corpus SDCC.")
+    st.divider()
+    if st.button("➕ Carica nuovo documento", use_container_width=True, type="primary"):
+        ingest_dialog()
+    if st.button("🗂️ Sfoglia archivio documenti", use_container_width=True):
+        archive_dialog()
 
 
 # --- Area principale: chat RAG ----------------------------------------------
@@ -269,18 +376,23 @@ def _render_sources(sources: list[str], chunks: list) -> None:
         for i, source in enumerate(sources):
             chunk = chunks[i] if i < len(chunks) else None
             filename = chunk.metadata.get("filename", source) if chunk else source
-            st.markdown(f"**[{i + 1}]** `{filename}` — {source}")
+            # Nome file una sola volta, in grassetto (niente più duplicato col source).
+            st.markdown(f"**[{i + 1}] {filename}**")
             if chunk is not None:
-                # Anteprima del passaggio effettivamente passato all'LLM.
+                # Anteprima del passaggio effettivamente passato all'LLM, resa come
+                # blockquote: ogni riga prefissata con "> " (una riga vuota
+                # spezzerebbe la citazione in markdown).
                 snippet = chunk.text.strip()
                 if len(snippet) > 500:
                     snippet = snippet[:500] + "…"
-                st.caption(snippet)
+                quoted = "\n".join(f"> {line}" for line in snippet.splitlines()) or f"> {snippet}"
+                st.markdown(quoted)
 
 
 # Re-render dello storico a ogni ciclo.
 for message in st.session_state["messages"]:
-    with st.chat_message(message["role"]):
+    avatar = ASSISTANT_AVATAR if message["role"] == "assistant" else USER_AVATAR
+    with st.chat_message(message["role"], avatar=avatar):
         st.markdown(message["content"])
         if message["role"] == "assistant":
             _render_sources(message.get("sources", []), message.get("chunks", []))
@@ -289,10 +401,10 @@ for message in st.session_state["messages"]:
 # Input dell'utente.
 if question := st.chat_input("Fai una domanda sul corpus…"):
     st.session_state["messages"].append({"role": "user", "content": question})
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=USER_AVATAR):
         st.markdown(question)
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=ASSISTANT_AVATAR):
         with st.spinner("Recupero dei chunk e generazione…"):
             answer = service.answer(question)
         st.markdown(answer.text)

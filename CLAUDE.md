@@ -12,14 +12,14 @@ retrieve the most relevant chunks, generate a grounded answer with the LLM).
 ## Commands
 
 ```bash
-python -m venv venv && venv\Scripts\activate    # Windows
+python -m venv .venv && .venv\Scripts\activate    # Windows
 pip install -r requirements.txt
 copy .env.example .env                           # then fill in keys
 
 python scripts/ingest.py [PATH] [--title T] [--author A] [--category C] \
     [--description D] [--tags "a,b,c"] [--meta KEY=VALUE ...] [--sync]   # ingestion (default ./data)
 python scripts/query.py [--top-k N] [--min-score F]   # interactive query REPL
-streamlit run app.py                             # web UI (ingestion sidebar + RAG chat); needs `pip install streamlit`
+streamlit run app.py                             # web UI (ingestion sidebar + RAG chat)
 python infrastructure/setup_azure_search_index.py [--force]   # provision Azure AI Search index (VECTOR_STORE=azure_search)
 pytest                                           # all tests
 pytest tests/test_orchestrator.py::test_ingest_conta_documenti_e_chunk   # single test
@@ -66,12 +66,13 @@ upload to inject that file's `ManualMetadataEnricher`. Its ingestion path always
 raw file to Blob first, then re-reads it via `AzureBlobDocumentLoader`** (so provenance/idempotency
 match the `DOCUMENT_SOURCE=azure` flow) — it fails hard if Azure Storage creds are missing, and
 enforces UI-side guards not present in the CLI: an extension whitelist (`txt`/`md`/`json`) and a
-5 MB max upload size. Note `streamlit` is imported here but is **not** in `requirements.txt`.
+5 MB max upload size.
 
 ### Key design rules
 
 - **Provider/backend switches are config-only, one factory each**: `EMBEDDING_PROVIDER` (`openai`|`azure`|`ollama`) → `embeddings/factory.py`, `LLM_PROVIDER` (`ollama`|`azure`) → `llm/factory.py`, `VECTOR_STORE` (`chroma`|`azure_search`) → `stores/factory.py`, `DOCUMENT_SOURCE` (`local`|`azure`) → `scripts/ingest.py`. Each factory is the *only* place that imports the concrete impls (lazily, so an unused backend needs neither its SDK nor its credentials). Never hardcode a backend outside its factory. OpenAI/Azure embedding both use the `openai` SDK (`OpenAI` vs `AzureOpenAI`); on Azure the API "model" is the deployment name.
 - **Embeddings are computed by the provider, not Chroma**: vectors are passed explicitly to `ChromaVectorStore`; do not enable Chroma's internal embedding_function.
+- **SDK major versions are pinned on purpose**: the code targets the `openai` **1.x** client (`OpenAI(...).embeddings.create`, chat completions in `embeddings/openai_provider.py`, `embeddings/azure_provider.py`, `llm/` Azure provider) and `azure-search-documents` **11.x** (`SearchClient` + `VectorizedQuery`, hybrid `search(...)` reading `@search.score` in `stores/azure_search_store.py`). `requirements.txt` caps them (`openai>=1.30,<2`, `azure-search-documents>=11.4,<12`) and these ceilings are load-bearing: `openai` 2.x and `azure-search` 12.x change the client/query APIs and break retrieval **silently** — embedding or search calls fail or return nothing, so `RAGService` abstains with **0 sources and no exception**. Installing new deps (e.g. `streamlit`) can silently re-resolve these to newer majors; **re-check versions after any dependency change** and don't raise a ceiling without auditing those call sites.
 - **Idempotent ingestion**: `domain/models.py:make_chunk_id` derives a deterministic SHA-256 id from `(source, index, text)`; the store uses `upsert` keyed on it, so re-ingesting updates instead of duplicating. Preserve this when changing chunking or storage. Because the id depends on `source`, `AzureBlobDocumentLoader` downloads each blob to a *random* temp file but then **rewrites provenance** (`source` + `metadata["filename"]`) back to the stable blob name — otherwise the temp path would break idempotency across runs.
 - **Sync & Purge (orphan-chunk pruning)**: because `chunk_id` hashes the content, *editing* a source document changes its chunk ids and *deleting* it removes the source entirely — either way the old chunks would linger as **orphans**. `sync_and_ingest(source_documents)` (and `sync_and_ingest_path(root)` for local) fixes this in two phases: (1) **purge** — delete any `doc_id` in `get_all_doc_ids()` but not in the source set; (2) **ingest with purge-first** — `_process_documents(..., purge_first=True)` calls `delete_by_doc_id(document.source)` before re-upserting each doc, so stale versions never survive. `doc_id == Document.source` (unique per `Document`; JSON records are `path#index`). It is **opt-in via `--sync`** because purge deletes everything not in the current run — only safe on full-corpus runs, never a subfolder. Store mapping: Chroma filters the existing scalar `source` metadata (`where={"source": …}`); Azure needs a top-level **filterable+facetable `doc_id` field** (source lives buried in the non-filterable `metadata` JSON), so adding it to the index means re-provisioning (`infrastructure/setup_azure_search_index.py --force`) + re-ingest.
 - **Two retrieval thresholds, different scales**: `RETRIEVAL_MIN_SCORE` is the store-agnostic filter applied by `RAGService`; `AZURE_SEARCH_MIN_SCORE` is applied *inside* `AzureSearchVectorStore` because Azure `@search.score` lives on a different scale than Chroma cosine distance. Keep them separate; don't collapse into one setting.

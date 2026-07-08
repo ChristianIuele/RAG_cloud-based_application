@@ -1,0 +1,6 @@
+# Configurazione Streamlit del frontend SDCC RAG.
+# Impone il tetto di upload lato server a 5 MB (AB-02): il widget file_uploader
+# mostra "5MB per file" e il server rifiuta payload più grandi prima ancora della
+# guardia applicativa in app.py — difesa in profondità contro DoS da file enormi.
+[server]
+maxUploadSize = 5
