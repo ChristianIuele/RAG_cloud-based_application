@@ -198,12 +198,14 @@ def _ingest_from_blob(shared: dict, blob_name: str, manual: dict[str, str]):
     return orchestrator.ingest_documents(documents)
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=300, show_spinner=False)
 def _list_corpus_blobs(container_name: str, conn_str: str) -> list[str]:
     """Nomi dei blob nel container (RF-004: source of truth dei file grezzi).
 
-    Cache breve (ttl=30s) così l'elenco si aggiorna poco dopo un'ingestione senza
-    ricolpire Blob a ogni rerun. Argomenti scalari (stringhe) per farla hashabile.
+    Cache (ttl=300s) così l'elenco non ricolpisce Blob a ogni rerun; dopo
+    un'ingestione la cache viene invalidata a mano (`_list_corpus_blobs.clear()`).
+    `show_spinner=False` per non mostrare lo spinner del cache miss. Argomenti
+    scalari (stringhe) per farla hashabile.
     """
     from azure.storage.blob import BlobServiceClient
 
@@ -212,12 +214,13 @@ def _list_corpus_blobs(container_name: str, conn_str: str) -> list[str]:
     return sorted(b.name for b in container.list_blobs())
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _download_blob_bytes(container_name: str, conn_str: str, blob_name: str) -> bytes:
     """Scarica i byte del blob originale (RF-004: download del file grezzo).
 
-    Cachato (ttl=30s, argomenti scalari) così `st.download_button` ha i dati pronti
-    al render senza riscaricare a ogni rerun del modale.
+    Cachato (ttl=3600s, argomenti scalari) così `st.download_button` ha i dati
+    pronti al render senza riscaricare a ogni rerun del modale. `show_spinner=False`
+    evita lo spinner "Running…" per ogni file nel loop dell'archivio.
     """
     from azure.storage.blob import BlobServiceClient
 
