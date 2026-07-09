@@ -1,0 +1,4 @@
+# Dipendenze di sviluppo/test (non necessarie in produzione).
+# Installa anche le dipendenze runtime tramite -r requirements.txt.
+-r requirements.txt
+pytest>=8.0

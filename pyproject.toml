@@ -9,10 +9,17 @@ description = "Sistema RAG sul corpus SDCC (ingestion pipeline interface-driven)
 requires-python = ">=3.10"
 dependencies = [
     "chromadb>=0.5",
-    "openai>=1.30",
+    "openai>=1.30,<2",
+    "azure-storage-blob>=12",
+    "azure-search-documents>=11.4,<12",
     "ollama>=0.3",
     "pydantic-settings>=2.2",
+    "python-dotenv>=1.0",
+    "streamlit>=1.40,<2",
 ]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

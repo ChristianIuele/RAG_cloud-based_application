@@ -4,5 +4,5 @@ azure-storage-blob>=12
 azure-search-documents>=11.4,<12
 ollama>=0.3
 pydantic-settings>=2.2
-pytest>=8.0
+python-dotenv>=1.0
 streamlit>=1.40,<2

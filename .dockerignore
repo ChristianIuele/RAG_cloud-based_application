@@ -1,0 +1,28 @@
+# Ambiente virtuale e artefatti Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Git e metadati
+.git/
+.gitignore
+.dockerignore
+
+# Editor / IDE
+.vscode/
+
+# Dati locali e segreti (non vanno nell'immagine)
+.env
+chroma_db/
+data/
+.streamlit/secrets.toml
+
+# Dati di esempio e documentazione
+documenti_test/
+*.md
+
+# Test non usati a runtime (requirements.lock serve al build → NON escluso)
+tests/
