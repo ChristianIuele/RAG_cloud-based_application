@@ -2,3 +2,7 @@
 # Installa anche le dipendenze runtime tramite -r requirements.txt.
 -r requirements.txt
 pytest>=8.0
+# chromadb: vector store SOLO per test/dev locali (il Tech Lead lo usa per
+# risparmiare risorse cloud). In produzione si usa Azure AI Search, quindi
+# resta fuori da requirements.txt e dall'immagine Docker.
+chromadb>=0.5
