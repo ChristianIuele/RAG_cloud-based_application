@@ -1,8 +1,13 @@
-# Dipendenze di sviluppo/test (non necessarie in produzione).
-# Installa anche le dipendenze runtime tramite -r requirements.txt.
+# Dipendenze di SVILUPPO / TEST / quarantena locale.
+# NON vanno in produzione ne' nell'immagine Docker.
+# Installa prima tutto il runtime di produzione, poi i tool locali.
 -r requirements.txt
-pytest>=8.0
-# chromadb: vector store SOLO per test/dev locali (il Tech Lead lo usa per
-# risparmiare risorse cloud). In produzione si usa Azure AI Search, quindi
-# resta fuori da requirements.txt e dall'immagine Docker.
+
+# Vector store locale (alternativa gratuita ad Azure AI Search per dev/test).
 chromadb>=0.5
+# LLM/embedding locali gratuiti (alternativa ad Azure OpenAI per dev/test).
+ollama>=0.3
+# Runner dei test.
+pytest>=8.0
+# Client Hugging Face usato dai tool locali (es. modelli di embedding offline).
+huggingface_hub>=0.20

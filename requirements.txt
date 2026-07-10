@@ -1,7 +1,15 @@
+# Dipendenze di PRODUZIONE (cloud-native, minimalita' deliberata).
+# In produzione si usano ESCLUSIVAMENTE i servizi Azure:
+# Azure OpenAI, Azure AI Search, Azure Blob Storage.
+# Nessun tool locale qui (chromadb/ollama/pytest vivono in requirements-dev.txt).
+#
+# NB: i tetti di versione sono load-bearing (vedi CLAUDE.md):
+#   - openai 1.x  -> OpenAI/AzureOpenAI client, chat/embeddings
+#   - azure-search-documents 11.x -> SearchClient + VectorizedQuery
+# Alzarli senza auditare i call site rompe la retrieval in modo silenzioso.
+streamlit>=1.40,<2
 openai>=1.30,<2
-azure-storage-blob>=12
 azure-search-documents>=11.4,<12
-ollama>=0.3
+azure-storage-blob>=12
 pydantic-settings>=2.2
 python-dotenv>=1.0
-streamlit>=1.40,<2
