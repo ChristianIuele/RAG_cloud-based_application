@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     )
 
     # --- Selezione provider di embedding -------------------------------------
-    embedding_provider: str = "openai"  # "openai" | "azure" | "ollama"
+    embedding_provider: str = "azure"  # "openai" | "azure" | "ollama"
 
     # --- OpenAI --------------------------------------------------------------
     openai_api_key: str | None = None
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     ollama_embedding_model: str = "nomic-embed-text"
 
     # --- LLM (arricchimento semantico) ---------------------------------------
-    llm_provider: str = "ollama"  # "ollama" | "azure"
+    llm_provider: str = "azure"  # "ollama" | "azure"
     ollama_llm_model: str = "llama3"
     azure_llm_deployment: str = "gpt-5.4-nano"  # deployment chat Azure (unico deployment reale)
     # deployment dedicato all'estrazione dei metadati automatici (separato dalla
@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     chunk_overlap: int = 200
 
     # --- Selezione vector store ----------------------------------------------
-    vector_store: str = "chroma"  # "chroma" | "azure_search"
+    vector_store: str = "azure_search"  # "chroma" | "azure_search"
 
     # --- ChromaDB ------------------------------------------------------------
     chroma_path: str = "./chroma_db"
@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     json_text_field: str = "text"  # campo da cui estrarre il testo nei record JSON
 
     # --- Ingestion -----------------------------------------------------------
-    document_source: str = "local"  # "local" | "azure"
+    document_source: str = "azure"  # "local" | "azure"
     data_path: str = "./data"
     batch_size: int = 64
 

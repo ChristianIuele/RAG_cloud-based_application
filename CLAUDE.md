@@ -13,7 +13,8 @@ retrieve the most relevant chunks, generate a grounded answer with the LLM).
 
 ```bash
 python -m venv .venv && .venv\Scripts\activate    # Windows
-pip install -r requirements.txt
+pip install -r requirements-dev.txt              # dev/test: pulls requirements.txt + chromadb/ollama/pytest
+# pip install -r requirements.txt                # production only (Azure services, no local tools/tests)
 copy .env.example .env                           # then fill in keys
 
 python scripts/ingest.py [PATH] [--title T] [--author A] [--category C] \
@@ -81,6 +82,26 @@ enforces UI-side guards not present in the CLI: an extension whitelist (`txt`/`m
 - New concrete impls must subclass the matching ABC and be injected at the composition root — keep the orchestrator free of concrete imports.
 - **Grounded generation (anti-hallucination)**: `RAGService` separates *policy* (a fixed `SYSTEM_PROMPT`) from *data* (the numbered retrieved passages in the user message). The system prompt forces answers to use only the context, mandates an exact abstention sentence (`ABSTENTION_TEXT`) when the answer isn't present, requires `[n]` citations, and treats context as data not instructions (prompt-injection hardening). The **empty-guard** returns the abstention answer *without calling the LLM* when no chunk survives retrieval/threshold. The query embedder must be the same provider used at ingestion (same vector space) — both go through `create_embedding_provider`.
 
+## Deployment (Phase 3)
+
+The Streamlit frontend ships as a Docker image to **Azure Web App for Containers**:
+
+- `Dockerfile` (repo root): `python:3.12-slim` (3.12 is required by the pinned `numpy`),
+  installs from **`requirements.lock`** (not `requirements.txt` — the lock is the fully
+  pinned production set), runs as non-root `appuser`, exposes `8501`, has a
+  `/_stcore/health` HEALTHCHECK, and launches `streamlit run app.py`. Build locally as
+  `sdcc-rag:local` (the tag `deploy_azure.ps1` expects).
+- `infrastructure/deploy_azure.ps1`: idempotent `az`-CLI provisioning —
+  Resource Group → ACR (Basic, admin-enabled) → tag/push the local image →
+  App Service Plan (Linux **B1**, *not* Free F1 — the ~1.25 GB image OOMs on F1) →
+  Web App for Containers. All compute goes in `germanywestcentral` (data-gravity:
+  co-located with Azure AI Search / OpenAI). Sets `WEBSITES_PORT=8501` (Web Apps route to
+  80/8080 by default, so the site is unreachable without it). `$AcrName`/`$WebAppName` use
+  a random suffix for global uniqueness, so re-running creates *new* resources — pin them
+  after the first run for cross-run idempotency. **Secrets (API keys) are never in the
+  script**: they're injected later as app settings from Key Vault / pipeline (see the
+  commented block at the bottom).
+
 ## Conventions
 
 Docstrings and inline comments are written in **Italian** (identifiers/APIs stay
@@ -91,6 +112,14 @@ surrounding source.
 
 All settings live in `src/sdcc_rag/config.py:Settings` (pydantic-settings, reads `.env`,
 env vars override). `data/`, `chroma_db/`, and `.env` are gitignored.
+
+The shipped defaults target **Azure production**, not local: `embedding_provider`,
+`llm_provider`, `vector_store` (`azure_search`), and `document_source` all default to
+`azure`; both Azure deployments default to the single real `gpt-5.4-nano`. To run fully
+local, override to `ollama` / `chroma` / `local` in `.env` (and install
+`requirements-dev.txt`, which is the only file carrying `chromadb`/`ollama`). So the
+"local, default" impls named in Architecture are the *dev-mode* choice — the out-of-the-box
+config is cloud.
 
 ## Tests
 

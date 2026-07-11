@@ -25,7 +25,7 @@
 #>
 
 # Un errore di qualunque comando az/docker ferma subito lo script (fail-fast).
-$ErrorActionPreference = "Stop"
+#$ErrorActionPreference = "Stop"
 
 # ---------------------------------------------------------------------------
 # 1. VARIABILI
@@ -33,7 +33,7 @@ $ErrorActionPreference = "Stop"
 
 # Resource Group dedicato: separa il CALCOLO (questa app) dai DATI (Search/OpenAI,
 # in un altro RG). Per riusare un RG esistente, sostituire questo valore col suo nome.
-$ResourceGroup = "rg-sdcc-rag-app"
+$ResourceGroup = "rg-sdcc-rag"
 
 # Data Gravity: stessa region delle risorse dati per minimizzare latenza ed egress.
 $Location = "germanywestcentral"
