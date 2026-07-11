@@ -44,12 +44,23 @@ def main() -> None:
     store = create_vector_store(settings)
     llm = create_llm_provider(settings)
 
+    # Precedenza: override CLI esplicito > neutro su Azure Search > default coseno.
+    # Su Azure AI Search lo score è RRF (scala ~0.01-0.03), incompatibile con la soglia
+    # coseno 0.3 (tarata su Chroma): applicarla azzererebbe i risultati. Il taglio di
+    # rilevanza di base resta allo store (`azure_search_min_score`).
+    if args.min_score is not None:
+        query_min_score = args.min_score
+    elif settings.vector_store == "azure_search":
+        query_min_score = 0.0
+    else:
+        query_min_score = settings.retrieval_min_score
+
     service = RAGService(
         embedder=embedder,
         store=store,
         llm=llm,
         top_k=args.top_k if args.top_k is not None else settings.retrieval_top_k,
-        min_score=args.min_score if args.min_score is not None else settings.retrieval_min_score,
+        min_score=query_min_score,
     )
 
     print("Query RAG SDCC — scrivi una domanda (vuoto, 'exit' o Ctrl-D per uscire).")

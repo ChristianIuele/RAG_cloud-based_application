@@ -6,6 +6,7 @@ Usa pydantic-settings: ogni campo può essere sovrascritto da una env var omonim
 
 from __future__ import annotations
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -60,7 +61,13 @@ class Settings(BaseSettings):
     # --- Azure AI Search (vector store cloud) --------------------------------
     azure_search_endpoint: str | None = None
     azure_search_admin_key: str | None = None
-    azure_search_index_name: str = "rag-documents"
+    # L'override da env accetta SIA il nome canonico (AZURE_SEARCH_INDEX_NAME) SIA
+    # quello storico usato come App Setting in produzione (AZURE_SEARCH_INDEX): senza
+    # l'alias il secondo veniva ignorato e valeva solo il default per coincidenza.
+    azure_search_index_name: str = Field(
+        "rag-documents",
+        validation_alias=AliasChoices("AZURE_SEARCH_INDEX_NAME", "AZURE_SEARCH_INDEX"),
+    )
     # Soglia di rilevanza applicata dall'adapter Azure: scarta i match spuri a basso
     # @search.score. In hybrid search lo score è RRF (Reciprocal Rank Fusion, k=60),
     # su scala diversa dal coseno e da Chroma: i punteggi tipici stanno tra ~0.01 e

@@ -81,12 +81,19 @@ def get_shared() -> dict:
     splitter = RecursiveCharacterSplitter(
         chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
     )
+    # Su Azure AI Search gli score sono RRF (scala ~0.01-0.03), incompatibili con la
+    # soglia coseno `retrieval_min_score` (0.3, tarata su Chroma): applicarla azzererebbe
+    # tutti i risultati. Il taglio di rilevanza di base resta allo store
+    # (`azure_search_min_score`); qui neutralizziamo il filtro a valle del RAGService.
+    query_min_score = (
+        0.0 if settings.vector_store == "azure_search" else settings.retrieval_min_score
+    )
     service = RAGService(
         embedder=embedder,
         store=store,
         llm=llm,
         top_k=settings.retrieval_top_k,
-        min_score=settings.retrieval_min_score,
+        min_score=query_min_score,
     )
     return {
         "settings": settings,

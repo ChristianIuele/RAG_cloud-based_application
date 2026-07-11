@@ -56,11 +56,48 @@ def test_risposta_fondata_passa_contesto_e_system_all_llm():
     # risposta generata e propagata
     assert answer.text == "L'SDCC è il sistema di controllo distribuito [1]."
     assert llm.calls == 1
-    # fonti allineate ai passaggi tenuti (1:1, no dedup)
-    assert answer.sources == ["doc1.txt", "doc2.md"]
-    assert len(answer.chunks) == 2
+    # fonti = SOLO i passaggi citati: l'LLM ha citato [1], quindi solo doc1.txt
+    assert answer.sources == ["doc1.txt"]
+    assert len(answer.chunks) == 1
     # il system prompt (policy) è arrivato separato dai dati
     assert llm.last_system == SYSTEM_PROMPT
-    # i testi dei chunk sono nel messaggio utente (grounding)
+    # i testi dei chunk (entrambi) sono nel messaggio utente (grounding)
     assert "sistema di controllo distribuito" in llm.last_prompt
     assert "allarmi in tempo reale" in llm.last_prompt
+
+
+def test_solo_le_fonti_citate_con_rinumerazione_sequenziale():
+    store = FakeVectorStore(default_score=0.9)
+    _populate(
+        store,
+        _chunk("Primo passaggio.", "doc1.txt"),
+        _chunk("Secondo passaggio.", "doc2.md"),
+        _chunk("Terzo passaggio.", "doc3.txt"),
+    )
+    # L'LLM cita [2] e [3] (non [1]): le fonti mostrate devono essere solo doc2/doc3
+    # e il testo va rinumerato a [1]/[2] per restare coerente con la lista filtrata.
+    llm = EchoLLMProvider(answer="Vedi [3] e anche [2].")
+    service = RAGService(FakeEmbeddingProvider(), store, llm, min_score=0.5)
+
+    answer = service.answer("domanda")
+
+    # ordine di citazione: prima [3] poi [2] → nuova numerazione [1]=doc3, [2]=doc2
+    assert answer.sources == ["doc3.txt", "doc2.md"]
+    assert answer.text == "Vedi [1] e anche [2]."
+
+
+def test_nessuna_citazione_valida_fallback_top1():
+    store = FakeVectorStore(default_score=0.9)
+    _populate(
+        store,
+        _chunk("Chunk piu rilevante.", "doc1.txt"),
+        _chunk("Chunk secondario.", "doc2.md"),
+    )
+    # Nessuna [n] valida (l'unica citazione è fuori range): fallback al solo top-1.
+    llm = EchoLLMProvider(answer="Risposta senza citazioni valide [9].")
+    service = RAGService(FakeEmbeddingProvider(), store, llm, min_score=0.5)
+
+    answer = service.answer("domanda")
+
+    assert answer.sources == ["doc1.txt"]
+    assert len(answer.chunks) == 1
