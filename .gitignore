@@ -12,3 +12,10 @@ venv/
 #Dati Locali
 /data/
 /chroma_db/
+
+# IDE e Tool IA
+.vscode/
+.claude/
+
+# OS
+.DS_Store
